@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AMR Map Editor</title>
+<style>
+  body { margin: 0; background: #17191d; color: #e8edf2; font: 14px system-ui, sans-serif; }
+  main { display: grid; grid-template-columns: 330px minmax(500px, 1fr); gap: 16px; padding: 16px; }
+  aside { background: #242932; border-radius: 8px; padding: 16px; }
+  h1 { font-size: 20px; margin-top: 0; } label { display: block; margin-top: 12px; }
+  input, button { box-sizing: border-box; margin-top: 5px; padding: 7px; width: 100%; }
+  button { background: #3977be; color: white; border: 0; border-radius: 4px; cursor: pointer; }
+  button.secondary { background: #4a5260; } #canvasWrap { display: grid; place-items: center; overflow: auto; }
+  canvas { background: #fff; box-shadow: 0 4px 24px #000; max-width: calc(100vw - 380px); max-height: calc(100vh - 32px); touch-action: none; }
+  #stations { padding-left: 18px; } #stations li { cursor: pointer; margin: 6px 0; }
+  .hint { color: #b7c3d0; line-height: 1.4; } .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+</style>
+<main>
+  <aside>
+    <h1>AMR map editor</h1>
+    <p class="hint">Scroll to zoom; drag empty space to pan. Select a QR or the robot and press R to rotate, Shift+R to reverse, or arrows to nudge.</p>
+    <label>Floor PNG <input id="imageInput" type="file" accept="image/png,image/jpeg"></label>
+    <label>Project floor path <input id="floorPath" value="assets/track/Track_v1.png"></label>
+    <button id="loadFloor" class="secondary">Load project floor path</button>
+    <p id="status" class="hint">Loading default floor…</p>
+    <div class="row"><label>Floor width (m)<input id="width" type="number" value="6" step="0.1"></label>
+      <label>Floor height (m)<input id="height" type="number" value="6" step="0.1"></label></div>
+    <label>Robot model URI <input id="robotUri" value="model://amr"></label>
+    <label>Robot start pose x y z roll pitch yaw <input id="robotPose" value="0 -2 0.005 0 0 0"></label>
+    <label>Checkpoint ID <input id="stationId" value="Station_A"></label>
+    <button id="add">Add checkpoint at centre</button>
+    <button id="remove" class="secondary">Remove selected checkpoint</button>
+    <button id="resetView" class="secondary">Reset pan and zoom</button>
+    <label>Map JSON <input id="jsonInput" type="file" accept="application/json,.json"></label>
+    <button id="export">Download map JSON</button>
+    <ul id="stations"></ul>
+  </aside>
+  <section id="canvasWrap"><canvas id="map" width="800" height="800"></canvas></section>
+</main>
+<script>
+const canvas = document.querySelector('#map'), ctx = canvas.getContext('2d');
+const image = new Image(); let stations = [], selected = -1, selectedRobot = false, dragging = false, draggingRobot = false, panning = false, clipboard = [];
+let selectedStations = new Set();
+const view = {zoom: 1, panX: 0, panY: 0, lastX: 0, lastY: 0};
+const qrImages = new Map();
+const $ = id => document.getElementById(id);
+const status = text => $('status').textContent = text;
+const size = () => ({w: Number($('width').value) || 6, h: Number($('height').value) || 6});
+function pxToWorld(x, y) { const s = size(); return {x: (x/canvas.width-.5)*s.w, y: (.5-y/canvas.height)*s.h}; }
+function mapToScreen(point) { return {x: canvas.width/2+view.panX+(point.x-canvas.width/2)*view.zoom, y: canvas.height/2+view.panY+(point.y-canvas.height/2)*view.zoom}; }
+function screenToMap(point) { return {x: canvas.width/2+(point.x-canvas.width/2-view.panX)/view.zoom, y: canvas.height/2+(point.y-canvas.height/2-view.panY)/view.zoom}; }
+function worldToMapPx(x, y) { const s = size(); return {x: (x/s.w+.5)*canvas.width, y: (.5-y/s.h)*canvas.height}; }
+function worldToPx(x, y) { return mapToScreen(worldToMapPx(x, y)); }
+function robotPose() { const p=$('robotPose').value.trim().split(/\s+/).map(Number); return p.length===6 && p.every(Number.isFinite) ? p : [0,-2,.005,0,0,0]; }
+function setRobotPose(p) { $('robotPose').value=p.map(v=>Number(v.toFixed(4))).join(' '); }
+function setRobotPosition(x,y) { const p=robotPose(); p[0]=x; p[1]=y; setRobotPose(p); }
+function qrImage(id) { if(!qrImages.has(id)) { const q=new Image(); q.onload=render; q.src='/api/qr/'+encodeURIComponent(id)+'.png'; qrImages.set(id,q); } return qrImages.get(id); }
+function selectStation(index, additive=false){if(!additive)selectedStations.clear();if(selectedStations.has(index)&&additive)selectedStations.delete(index);else selectedStations.add(index);selected=selectedStations.has(index)?index:(selectedStations.values().next().value??-1);selectedRobot=false;$('stationId').value=selected>=0?stations[selected].id:'';}
+function uniqueId(base){let id=base,n=1;while(stations.some(s=>s.id===id))id=`${base}_copy${n++}`;return id;}
+function renameSelected(){const id=$('stationId').value.trim();if(selected<0||!id)return;if(stations.some((s,i)=>i!==selected&&s.id===id))return alert('Checkpoint IDs must be unique.');qrImages.delete(stations[selected].id);stations[selected].id=id;render();}
+function render() {
+  ctx.clearRect(0,0,canvas.width,canvas.height); ctx.fillStyle='#101318'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.save(); ctx.translate(canvas.width/2+view.panX,canvas.height/2+view.panY); ctx.scale(view.zoom,view.zoom); ctx.translate(-canvas.width/2,-canvas.height/2);
+  if (image.src) ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  else { ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); }
+  ctx.strokeStyle='rgba(30,100,190,.35)'; ctx.lineWidth=1;
+  for(let i=0;i<=6;i++) { const p=i*canvas.width/6; ctx.beginPath();ctx.moveTo(p,0);ctx.lineTo(p,canvas.height);ctx.stroke();ctx.beginPath();ctx.moveTo(0,p);ctx.lineTo(canvas.width,p);ctx.stroke(); }
+  const s=size(), qrSize=0.05/s.w*canvas.width;
+  stations.forEach((station,index)=> { const p=worldToMapPx(station.x,station.y), q=qrImage(station.id), yaw=station.yaw||0; ctx.save();ctx.translate(p.x,p.y);ctx.rotate(-yaw);if(q.complete&&q.naturalWidth)ctx.drawImage(q,-qrSize/2,-qrSize/2,qrSize,qrSize);else{ctx.fillStyle='#d7263d';ctx.fillRect(-qrSize/2,-qrSize/2,qrSize,qrSize);}if(selectedStations.has(index)){ctx.strokeStyle='#ff9f1c';ctx.lineWidth=2/view.zoom;ctx.strokeRect(-qrSize/2,-qrSize/2,qrSize,qrSize);}ctx.restore(); });
+  const robot=robotPose(), rp=worldToMapPx(robot[0],robot[1]), robotLength=.40/s.w*canvas.width, robotWidth=.28/s.h*canvas.height;
+  ctx.save(); ctx.translate(rp.x,rp.y); ctx.rotate(-robot[5]); ctx.fillStyle='rgba(25,118,210,.82)'; ctx.fillRect(-robotLength/2,-robotWidth/2,robotLength,robotWidth);if(selectedRobot){ctx.strokeStyle='#ff9f1c';ctx.lineWidth=2/view.zoom;ctx.strokeRect(-robotLength/2,-robotWidth/2,robotLength,robotWidth);}ctx.fillStyle='#fff'; ctx.beginPath(); ctx.moveTo(robotLength/2,0);ctx.lineTo(robotLength/2-10,-7);ctx.lineTo(robotLength/2-10,7);ctx.fill(); ctx.restore();
+  ctx.restore();
+  $('stations').innerHTML=stations.map((s,i)=>`<li data-i="${i}">${selectedStations.has(i)?'● ':''}${s.id}: (${s.x.toFixed(3)}, ${s.y.toFixed(3)}), ${((s.yaw||0)*180/Math.PI).toFixed(0)}°</li>`).join('');
+  document.querySelectorAll('#stations li').forEach(el=>el.onclick=e=>{selectStation(Number(el.dataset.i),e.ctrlKey||e.metaKey);render();});
+}
+function canvasPoint(event) { const r=canvas.getBoundingClientRect(); return {x:(event.clientX-r.left)*canvas.width/r.width,y:(event.clientY-r.top)*canvas.height/r.height}; }
+canvas.onpointerdown=e=> { const p=canvasPoint(e), hit=stations.findIndex(s=>{const q=worldToPx(s.x,s.y);return Math.hypot(p.x-q.x,p.y-q.y)<Math.max(12,12*view.zoom);}); if(hit>=0)selectStation(hit,e.ctrlKey||e.metaKey); else if(!e.ctrlKey&&!e.metaKey){selected=-1;selectedStations.clear();} dragging=selected>=0&&hit>=0; const robot=robotPose(), rp=worldToPx(robot[0],robot[1]); draggingRobot=!dragging&&Math.hypot(p.x-rp.x,p.y-rp.y)<Math.max(24,32*view.zoom); selectedRobot=draggingRobot; panning=!dragging&&!draggingRobot; view.lastX=p.x; view.lastY=p.y; canvas.setPointerCapture(e.pointerId); render(); };
+canvas.onpointermove=e=> { const p=canvasPoint(e); if(dragging||draggingRobot) { const s=size(), q=pxToWorld(screenToMap(p).x,screenToMap(p).y), x=Math.max(-s.w/2,Math.min(s.w/2,q.x)), y=Math.max(-s.h/2,Math.min(s.h/2,q.y)); if(dragging){stations[selected].x=x;stations[selected].y=y;} else setRobotPosition(x,y); render(); } else if(panning) { view.panX+=p.x-view.lastX; view.panY+=p.y-view.lastY; view.lastX=p.x; view.lastY=p.y; render(); } };
+canvas.onpointerup=canvas.onpointercancel=()=>{dragging=false;draggingRobot=false;panning=false;};
+canvas.addEventListener('wheel', e=> { e.preventDefault(); const p=canvasPoint(e), old=view.zoom, next=Math.max(.25,Math.min(8,old*(e.deltaY<0?1.15:1/1.15))); view.panX=p.x-canvas.width/2-(p.x-canvas.width/2-view.panX)/old*next; view.panY=p.y-canvas.height/2-(p.y-canvas.height/2-view.panY)/old*next; view.zoom=next; render(); }, {passive:false});
+function loadProjectFloor() { const path=$('floorPath').value.trim().replace(/^\/+/, ''); if(!path) return status('Enter a project floor path.'); image.src='/'+path; status('Loading '+path+'…'); }
+$('imageInput').onchange=e=> { const file=e.target.files[0]; if(file) { image.src=URL.createObjectURL(file); status('Previewing '+file.name+'. Set its project path before saving.'); } };
+$('loadFloor').onclick=loadProjectFloor;
+$('add').onclick=()=> { const id=$('stationId').value.trim(); if(!id || stations.some(s=>s.id===id)) return alert('Use a unique checkpoint ID.'); stations.push({id,x:0,y:0,yaw:0}); selectedStations=new Set([stations.length-1]);selected=stations.length-1;selectedRobot=false; render(); };
+function removeSelected(){[...selectedStations].sort((a,b)=>b-a).forEach(i=>stations.splice(i,1));selectedStations.clear();selected=-1;render();}
+$('remove').onclick=removeSelected;
+$('resetView').onclick=()=> { view.zoom=1; view.panX=0; view.panY=0; render(); };
+$('jsonInput').onchange=e=> { const file=e.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=()=>{try { const m=JSON.parse(reader.result); $('floorPath').value=m.floor_png||''; $('width').value=m.floor_size_m?.[0]||6; $('height').value=m.floor_size_m?.[1]||6; $('robotUri').value=m.robot?.model_uri||'model://amr'; $('robotPose').value=(m.robot?.start_pose||[0,-2,.005,0,0,0]).join(' '); stations=(m.checkpoints||[]).map(s=>({...s,yaw:s.yaw||0})); selected=-1;selectedStations.clear();selectedRobot=false; if(m.floor_png) image.src='/'+m.floor_png; render(); }catch(_){alert('Invalid map JSON.');}}; reader.readAsText(file); };
+$('export').onclick=()=> { const pose=$('robotPose').value.trim().split(/\s+/).map(Number); if(pose.length!==6||pose.some(Number.isNaN)) return alert('Robot pose needs six numbers.'); const data={template:'sdf/track_with_robot.sdf',floor_png:$('floorPath').value.trim(),floor_size_m:[Number($('width').value),Number($('height').value)],robot:{model_uri:$('robotUri').value.trim(),start_pose:pose},checkpoints:stations}; const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='my_map.json'; a.click(); URL.revokeObjectURL(a.href); };
+['width','height','robotPose'].forEach(id=>$(id).oninput=render); image.onload=()=>{status('Floor loaded. Add a checkpoint, then drag its QR image or blue robot footprint.');render();}; image.onerror=()=>{status('Could not load floor. Choose a PNG or check the project floor path.');render();}; loadProjectFloor(); render();
+$('stationId').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();renameSelected();}});
+window.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName))return;const d=e.shiftKey?.05:.01,turn=(e.shiftKey?-1:1)*Math.PI/12,ctrl=e.ctrlKey||e.metaKey;if(ctrl&&e.key.toLowerCase()==='c'){clipboard=[...selectedStations].map(i=>({...stations[i]}));e.preventDefault();return;}if(ctrl&&e.key.toLowerCase()==='v'){const copies=clipboard.map(s=>({...s,id:uniqueId(s.id),x:s.x+.05,y:s.y+.05}));const first=stations.length;stations.push(...copies);selectedStations=new Set(copies.map((_,i)=>first+i));selected=first;selectedRobot=false;e.preventDefault();render();return;}if(e.key.toLowerCase()==='r'){if(selectedStations.size)selectedStations.forEach(i=>stations[i].yaw=(stations[i].yaw||0)+turn);else if(selectedRobot){const p=robotPose();p[5]+=turn;setRobotPose(p);}else return;e.preventDefault();render();}else if(e.key==='Delete')removeSelected();else if(e.key==='Escape'){selected=-1;selectedStations.clear();selectedRobot=false;render();}else if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){let dx=0,dy=0;if(e.key==='ArrowUp')dy=d;if(e.key==='ArrowDown')dy=-d;if(e.key==='ArrowLeft')dx=-d;if(e.key==='ArrowRight')dx=d;if(selectedStations.size)selectedStations.forEach(i=>{stations[i].x+=dx;stations[i].y+=dy;});else if(selectedRobot){const p=robotPose();p[0]+=dx;p[1]+=dy;setRobotPose(p);}else return;e.preventDefault();render();}});
+</script>
+</html>

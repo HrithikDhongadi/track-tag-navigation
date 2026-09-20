@@ -1,0 +1,12 @@
+{
+  "template": "sdf/track_with_robot.sdf",
+  "floor_png": "assets/track/Track_v1.png",
+  "floor_size_m": [6.0, 6.0],
+  "robot": {
+    "model_uri": "model://amr",
+    "start_pose": [0.0, -2.0, 0.005, 0.0, 0.0, 0.0]
+  },
+  "checkpoints": [
+    {"id": "Station_A", "x": 0.75, "y": -1.915}
+  ]
+}

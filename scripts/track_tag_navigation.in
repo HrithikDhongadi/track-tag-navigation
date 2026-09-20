@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Single entry point for the Fortress world and its ROS-free clients.
+set -euo pipefail
+
+project_root="@CMAKE_SOURCE_DIR@"
+build_dir="@CMAKE_BINARY_DIR@"
+world="$project_root/sdf/track_with_qr.sdf"
+controller_args=()
+gazebo_args=(--render-engine ogre2)
+auto_run=false
+headless=false
+
+usage() {
+  cat <<EOF
+Usage: $0 [--run] [--view] [--headless] [--world sdf/my_map.sdf]
+
+  --run       start physics immediately (otherwise press Play in Fortress)
+  --view      show the QR camera window (adds display overhead)
+  --headless  run server-only with off-screen camera rendering; use this to
+              measure maximum real-time performance (implies --run)
+  --world     launch a generated SDF instead of the tested default world
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --run) auto_run=true ;;
+    --view) controller_args+=(--view) ;;
+    --headless) headless=true; auto_run=true ;;
+    --world)
+      shift
+      [[ $# -gt 0 ]] || { echo "--world requires an SDF path" >&2; exit 2; }
+      world="$1"
+      [[ "$world" = /* ]] || world="$project_root/$world"
+      ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+  esac
+  shift
+done
+
+if [[ ! -f "$world" ]]; then
+  echo "World not found: $world" >&2
+  exit 1
+fi
+
+if [[ ! -x "$build_dir/track_tag_navigation_controller" ]]; then
+  echo "Missing controller. Build with: cmake --build $build_dir -j2" >&2
+  exit 1
+fi
+
+# The project root makes ../assets paths in the SDF available to Fortress.
+export IGN_GAZEBO_RESOURCE_PATH="$project_root/models:$project_root${IGN_GAZEBO_RESOURCE_PATH:+:$IGN_GAZEBO_RESOURCE_PATH}"
+
+cleanup() {
+  ign topic -t /amr/cmd_vel -m ignition.msgs.Twist \
+    -p 'linear: {x: 0.0}, angular: {z: 0.0}' >/dev/null 2>&1 || true
+  kill "${controller_pid:-}" 2>/dev/null || true
+}
+trap cleanup EXIT INT TERM
+
+"$build_dir/track_tag_navigation_controller" "${controller_args[@]}" & controller_pid=$!
+
+if [[ "$auto_run" == true ]]; then gazebo_args+=(-r); fi
+if [[ "$headless" == true ]]; then gazebo_args+=(-s --headless-rendering); fi
+
+ign gazebo "$world" "${gazebo_args[@]}"
