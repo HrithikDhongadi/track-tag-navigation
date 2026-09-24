@@ -16,9 +16,11 @@ import sys
 import xml.etree.ElementTree as ET
 
 import qrcode
+from PIL import Image, ImageOps
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 QR_SIZE_M = 0.05
+TRACK_OVERLAY_CUTOFF = 180
 
 
 def project_path(value, label):
@@ -55,6 +57,30 @@ def add_marker(world, identifier, x, y, yaw, texture_path):
     ET.SubElement(metal, 'albedo_map').text = texture_path
     ET.SubElement(metal, 'metalness').text = '0'
     ET.SubElement(metal, 'roughness').text = '1'
+
+
+def compose_floor_texture(track_path, surface_path, output_path):
+    """Overlay the dark track pixels on a light surface texture.
+
+    The editable track layout is expected to have a light background and dark
+    route strokes. Only pixels darker than TRACK_OVERLAY_CUTOFF are retained,
+    so the surface remains visible everywhere else.
+    """
+    try:
+        with Image.open(track_path) as source:
+            track = source.convert('RGB')
+        with Image.open(surface_path) as source:
+            resampling = getattr(Image, 'Resampling', Image).LANCZOS
+            surface = ImageOps.fit(source.convert('RGB'), track.size,
+                                   method=resampling)
+    except OSError as error:
+        raise ValueError(f'Cannot read track or surface texture: {error}') from error
+
+    luminance = ImageOps.grayscale(track)
+    mask = luminance.point(lambda value: 255 if value < TRACK_OVERLAY_CUTOFF else 0)
+    composite = Image.composite(track, surface, mask)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    composite.save(output_path, 'PNG')
 
 
 def validate_navigation(navigation, checkpoint_ids):
@@ -118,10 +144,21 @@ def main():
         output.relative_to(PROJECT_ROOT)
     except ValueError:
         parser.error('--output must be inside the project')
+    map_id = re.sub(r'[^a-z0-9_]+', '_', config_file.stem.lower()).strip('_') or 'map'
     try:
         config = json.loads(config_file.read_text(encoding='utf-8'))
         template = project_path(config.get('template', 'sdf/track_with_robot.sdf'), 'template')
-        floor = project_path(config['floor_png'], 'floor_png')
+        has_track = 'track_png' in config
+        has_surface = 'surface_png' in config
+        if has_track != has_surface:
+            raise ValueError('track_png and surface_png must be supplied together.')
+        if has_track:
+            track = project_path(config['track_png'], 'track_png')
+            surface = project_path(config['surface_png'], 'surface_png')
+            floor = PROJECT_ROOT / 'assets' / 'generated_floors' / f'{map_id}.png'
+        else:
+            floor = project_path(config['floor_png'], 'floor_png')
+            track = surface = None
         checkpoints = config['checkpoints']
         floor_size = config.get('floor_size_m', [6.0, 6.0])
         floor_width, floor_height = float(floor_size[0]), float(floor_size[1])
@@ -135,12 +172,12 @@ def main():
         parser.error('floor_size_m values must be positive.')
     if not robot_uri.startswith('model://') or len(robot_pose) != 6:
         parser.error('robot requires a model:// URI and a six-value start_pose.')
-    if not template.is_file() or not floor.is_file():
-        parser.error('The template SDF and floor_png must exist.')
+    if not template.is_file() or (track is None and not floor.is_file()) or \
+            (track is not None and (not track.is_file() or not surface.is_file())):
+        parser.error('The template and selected floor assets must exist.')
     if not isinstance(checkpoints, list) or not checkpoints:
         parser.error('checkpoints must be a non-empty list.')
 
-    map_id = re.sub(r'[^a-z0-9_]+', '_', config_file.stem.lower()).strip('_') or 'map'
     qr_dir = PROJECT_ROOT / 'assets' / 'checkpoints' / map_id
     markers = []
     names = set()
@@ -163,8 +200,16 @@ def main():
     except ValueError as error:
         parser.error(str(error))
     targets = [output, *(marker[4] for marker in markers)]
+    if track is not None:
+        targets.append(floor)
     if not args.force and any(path.exists() for path in targets):
         parser.error('Output exists; choose a new map name or use --force.')
+
+    if track is not None:
+        try:
+            compose_floor_texture(track, surface, floor)
+        except ValueError as error:
+            parser.error(str(error))
 
     root = ET.parse(template).getroot()
     world = root.find('world')
@@ -204,6 +249,8 @@ def main():
     output.parent.mkdir(parents=True, exist_ok=True)
     ET.ElementTree(root).write(output, encoding='utf-8', xml_declaration=True)
     print(f'Created {output}')
+    if track is not None:
+        print(f'Created composited floor texture {floor}')
     print(f'Created {len(markers)} QR texture(s) in {qr_dir}')
     print('Template world and current tuned worlds were not modified.')
 

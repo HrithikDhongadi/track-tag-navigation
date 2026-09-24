@@ -56,6 +56,77 @@
     <plugin name="ignition::gazebo::systems::Sensors" filename="libignition-gazebo-sensors-system.so">
       <render_engine>ogre2</render_engine>
     </plugin>
+    <!-- Visual-only warehouse scenery. It deliberately has no collision geometry,
+         so it cannot alter the tested track, QR visibility footprint, or robot motion. -->
+    <model name="warehouse_perimeter">
+      <static>true</static>
+      <link name="structure">
+        <visual name="north_curb">
+          <pose>0 2.87 0.13 0 0 0</pose>
+          <geometry><box><size>5.72 0.14 0.26</size></box></geometry>
+          <material><ambient>0.10 0.16 0.22 1</ambient><diffuse>0.10 0.16 0.22 1</diffuse></material>
+        </visual>
+        <visual name="south_curb">
+          <pose>0 -2.87 0.13 0 0 0</pose>
+          <geometry><box><size>5.72 0.14 0.26</size></box></geometry>
+          <material><ambient>0.10 0.16 0.22 1</ambient><diffuse>0.10 0.16 0.22 1</diffuse></material>
+        </visual>
+        <visual name="east_curb">
+          <pose>2.87 0 0.13 0 0 0</pose>
+          <geometry><box><size>0.14 5.72 0.26</size></box></geometry>
+          <material><ambient>0.10 0.16 0.22 1</ambient><diffuse>0.10 0.16 0.22 1</diffuse></material>
+        </visual>
+        <visual name="west_curb">
+          <pose>-2.87 0 0.13 0 0 0</pose>
+          <geometry><box><size>0.14 5.72 0.26</size></box></geometry>
+          <material><ambient>0.10 0.16 0.22 1</ambient><diffuse>0.10 0.16 0.22 1</diffuse></material>
+        </visual>
+        <visual name="north_safety_strip"><pose>0 2.65 0.007 0 0 0</pose><geometry><box><size>5.38 0.07 0.01</size></box></geometry><material><ambient>0.95 0.56 0.08 1</ambient><diffuse>0.95 0.56 0.08 1</diffuse></material></visual>
+        <visual name="south_safety_strip"><pose>0 -2.65 0.007 0 0 0</pose><geometry><box><size>5.38 0.07 0.01</size></box></geometry><material><ambient>0.95 0.56 0.08 1</ambient><diffuse>0.95 0.56 0.08 1</diffuse></material></visual>
+        <visual name="east_safety_strip"><pose>2.65 0 0.007 0 0 0</pose><geometry><box><size>0.07 5.38 0.01</size></box></geometry><material><ambient>0.95 0.56 0.08 1</ambient><diffuse>0.95 0.56 0.08 1</diffuse></material></visual>
+        <visual name="west_safety_strip"><pose>-2.65 0 0.007 0 0 0</pose><geometry><box><size>0.07 5.38 0.01</size></box></geometry><material><ambient>0.95 0.56 0.08 1</ambient><diffuse>0.95 0.56 0.08 1</diffuse></material></visual>
+        <visual name="corner_post_ne"><pose>2.84 2.84 0.55 0 0 0</pose><geometry><box><size>0.12 0.12 1.10</size></box></geometry><material><ambient>0.95 0.56 0.08 1</ambient><diffuse>0.95 0.56 0.08 1</diffuse></material></visual>
+        <visual name="corner_post_nw"><pose>-2.84 2.84 0.55 0 0 0</pose><geometry><box><size>0.12 0.12 1.10</size></box></geometry><material><ambient>0.95 0.56 0.08 1</ambient><diffuse>0.95 0.56 0.08 1</diffuse></material></visual>
+        <visual name="corner_post_se"><pose>2.84 -2.84 0.55 0 0 0</pose><geometry><box><size>0.12 0.12 1.10</size></box></geometry><material><ambient>0.95 0.56 0.08 1</ambient><diffuse>0.95 0.56 0.08 1</diffuse></material></visual>
+        <visual name="corner_post_sw"><pose>-2.84 -2.84 0.55 0 0 0</pose><geometry><box><size>0.12 0.12 1.10</size></box></geometry><material><ambient>0.95 0.56 0.08 1</ambient><diffuse>0.95 0.56 0.08 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="station_a_loading_bay">
+      <static>true</static>
+      <link name="bay">
+        <visual name="floor_strip"><pose>2.55 0 0.006 0 0 0</pose><geometry><box><size>0.48 0.92 0.01</size></box></geometry><material><ambient>0.05 0.32 0.65 1</ambient><diffuse>0.05 0.32 0.65 1</diffuse></material></visual>
+        <visual name="dock"><pose>2.73 0 0.19 0 0 0</pose><geometry><box><size>0.14 0.76 0.36</size></box></geometry><material><ambient>0.18 0.24 0.31 1</ambient><diffuse>0.18 0.24 0.31 1</diffuse></material></visual>
+        <visual name="beacon"><pose>2.48 0.40 0.46 0 0 0</pose><geometry><cylinder><radius>0.055</radius><length>0.28</length></cylinder></geometry><material><ambient>0.20 0.76 1 1</ambient><diffuse>0.20 0.76 1 1</diffuse><emissive>0.06 0.28 0.40 1</emissive></material></visual>
+      </link>
+    </model>
+    <model name="station_c_loading_bay">
+      <static>true</static>
+      <link name="bay">
+        <visual name="floor_strip"><pose>-2.55 0 0.006 0 0 0</pose><geometry><box><size>0.48 0.92 0.01</size></box></geometry><material><ambient>0.08 0.48 0.29 1</ambient><diffuse>0.08 0.48 0.29 1</diffuse></material></visual>
+        <visual name="dock"><pose>-2.73 0 0.19 0 0 0</pose><geometry><box><size>0.14 0.76 0.36</size></box></geometry><material><ambient>0.18 0.24 0.31 1</ambient><diffuse>0.18 0.24 0.31 1</diffuse></material></visual>
+        <visual name="beacon"><pose>-2.48 -0.40 0.46 0 0 0</pose><geometry><cylinder><radius>0.055</radius><length>0.28</length></cylinder></geometry><material><ambient>0.28 1 0.56 1</ambient><diffuse>0.28 1 0.56 1</diffuse><emissive>0.08 0.35 0.17 1</emissive></material></visual>
+      </link>
+    </model>
+    <model name="warehouse_shelves">
+      <static>true</static>
+      <link name="shelves">
+        <visual name="north_east_shelf"><pose>2.53 2.52 0.50 0 0 0</pose><geometry><box><size>0.48 0.34 1.0</size></box></geometry><material><ambient>0.22 0.29 0.36 1</ambient><diffuse>0.22 0.29 0.36 1</diffuse></material></visual>
+        <visual name="north_west_shelf"><pose>-2.53 2.52 0.50 0 0 0</pose><geometry><box><size>0.48 0.34 1.0</size></box></geometry><material><ambient>0.22 0.29 0.36 1</ambient><diffuse>0.22 0.29 0.36 1</diffuse></material></visual>
+        <visual name="south_east_shelf"><pose>2.53 -2.52 0.50 0 0 0</pose><geometry><box><size>0.48 0.34 1.0</size></box></geometry><material><ambient>0.22 0.29 0.36 1</ambient><diffuse>0.22 0.29 0.36 1</diffuse></material></visual>
+        <visual name="south_west_shelf"><pose>-2.53 -2.52 0.50 0 0 0</pose><geometry><box><size>0.48 0.34 1.0</size></box></geometry><material><ambient>0.22 0.29 0.36 1</ambient><diffuse>0.22 0.29 0.36 1</diffuse></material></visual>
+        <visual name="north_east_crate"><pose>2.52 2.28 1.03 0 0 0</pose><geometry><box><size>0.30 0.16 0.22</size></box></geometry><material><ambient>0.92 0.50 0.10 1</ambient><diffuse>0.92 0.50 0.10 1</diffuse></material></visual>
+        <visual name="south_west_crate"><pose>-2.52 -2.28 1.03 0 0 0</pose><geometry><box><size>0.30 0.16 0.22</size></box></geometry><material><ambient>0.92 0.50 0.10 1</ambient><diffuse>0.92 0.50 0.10 1</diffuse></material></visual>
+      </link>
+    </model>
+    <model name="junction_beacons">
+      <static>true</static>
+      <link name="beacons">
+        <visual name="north_beacon_base"><pose>-0.62 1.48 0.20 0 0 0</pose><geometry><box><size>0.16 0.16 0.40</size></box></geometry><material><ambient>0.16 0.20 0.27 1</ambient><diffuse>0.16 0.20 0.27 1</diffuse></material></visual>
+        <visual name="north_beacon_light"><pose>-0.62 1.48 0.49 0 0 0</pose><geometry><sphere><radius>0.09</radius></sphere></geometry><material><ambient>1 0.55 0.08 1</ambient><diffuse>1 0.55 0.08 1</diffuse><emissive>0.35 0.13 0.01 1</emissive></material></visual>
+        <visual name="south_beacon_base"><pose>0.62 -1.48 0.20 0 0 0</pose><geometry><box><size>0.16 0.16 0.40</size></box></geometry><material><ambient>0.16 0.20 0.27 1</ambient><diffuse>0.16 0.20 0.27 1</diffuse></material></visual>
+        <visual name="south_beacon_light"><pose>0.62 -1.48 0.49 0 0 0</pose><geometry><sphere><radius>0.09</radius></sphere></geometry><material><ambient>0.82 0.24 1 1</ambient><diffuse>0.82 0.24 1 1</diffuse><emissive>0.23 0.03 0.35 1</emissive></material></visual>
+      </link>
+    </model>
     <include>
       <uri>model://amr</uri>
       <name>amr</name>

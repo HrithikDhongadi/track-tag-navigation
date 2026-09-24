@@ -126,12 +126,20 @@ Open `http://127.0.0.1:8000/tools/map_editor/`.
 
 ![TrackTag Navigation map editor](assets/media/TrackTagMapEditor.png)
 
-1. Select the floor PNG for preview.
-2. Set **Project floor path** to `assets/track/my_track.png`.
-3. Add checkpoint IDs and place their QR images beside the line.
-4. Drag the blue robot footprint to set its starting position.
-5. Set robot yaw in the six-value start-pose field.
-6. Download the JSON and save it under `maps/`.
+1. Select the black-line **Track layout PNG** for preview.
+2. Set **Project track layout path** to `assets/track/my_track.png`.
+3. Optionally set **Surface texture path** to a light concrete, epoxy, or tile texture and load it. The preview draws the dark route over that surface.
+4. Add checkpoint IDs and place their QR images beside the line.
+5. Drag the blue robot footprint to set its starting position.
+6. Set robot yaw in the six-value start-pose field.
+7. Download the JSON and save it under `maps/`.
+
+When a surface texture is selected, the editor exports `track_png` and
+`surface_png`. `generate_map.py` composites the dark route pixels over the
+surface and writes an SDF-ready PNG under `assets/generated_floors/`. Choose a
+light, low-contrast surface: dark tile grout, stains, or seams can be mistaken
+for the line. Existing maps that use the older combined `floor_png` field remain
+supported.
 
 Editor controls:
 

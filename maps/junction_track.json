@@ -1,6 +1,5 @@
 {
   "template": "sdf/track_with_robot.sdf",
-  "floor_png": "assets/track/Track_v2.png",
   "floor_size_m": [
     6,
     6
@@ -120,6 +119,8 @@
       "yaw": 4.71238898038469
     }
   ],
+  "track_png": "assets/track/Track_v2.png",
+  "surface_png": "assets/surfaces/warehouse_concrete.png",
   "navigation": {
     "schema_version": 1,
     "default_start": "Station A",

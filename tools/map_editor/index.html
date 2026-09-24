@@ -20,9 +20,12 @@
   <aside>
     <h1>AMR map editor</h1>
     <p class="hint">Scroll to zoom; drag empty space to pan. Select a QR or the robot and press R to rotate, Shift+R to reverse, or arrows to nudge.</p>
-    <label>Floor PNG <input id="imageInput" type="file" accept="image/png,image/jpeg"></label>
-    <label>Project floor path <input id="floorPath" value="assets/track/Track_v1.png"></label>
-    <button id="loadFloor" class="secondary">Load project floor path</button>
+    <label>Track layout PNG <input id="imageInput" type="file" accept="image/png,image/jpeg"></label>
+    <label>Project track layout path <input id="floorPath" value="assets/track/Track_v1.png"></label>
+    <button id="loadFloor" class="secondary">Load track layout path</button>
+    <label>Surface texture path (optional) <input id="surfacePath" placeholder="assets/surfaces/polished_concrete.png"></label>
+    <button id="loadSurface" class="secondary">Load surface texture</button>
+    <p class="hint">With a surface texture, the editor previews only the dark route pixels over that surface. Choose a light texture; dark seams can be mistaken for the line.</p>
     <p id="status" class="hint">Loading default floor…</p>
     <div class="row"><label>Floor width (m)<input id="width" type="number" value="6" step="0.1"></label>
       <label>Floor height (m)<input id="height" type="number" value="6" step="0.1"></label></div>
@@ -40,7 +43,7 @@
 </main>
 <script>
 const canvas = document.querySelector('#map'), ctx = canvas.getContext('2d');
-const image = new Image(); let stations = [], selected = -1, selectedRobot = false, dragging = false, draggingRobot = false, panning = false, clipboard = [];
+const image = new Image(), surfaceImage = new Image(); let trackOverlay = null, stations = [], selected = -1, selectedRobot = false, dragging = false, draggingRobot = false, panning = false, clipboard = [];
 let selectedStations = new Set();
 const view = {zoom: 1, panX: 0, panY: 0, lastX: 0, lastY: 0};
 const qrImages = new Map(); let navigation={schema_version:1,default_start:"",edges:[]};
@@ -56,13 +59,18 @@ function robotPose() { const p=$('robotPose').value.trim().split(/\s+/).map(Numb
 function setRobotPose(p) { $('robotPose').value=p.map(v=>Number(v.toFixed(4))).join(' '); }
 function setRobotPosition(x,y) { const p=robotPose(); p[0]=x; p[1]=y; setRobotPose(p); }
 function qrImage(id) { if(!qrImages.has(id)) { const q=new Image(); q.onload=render; q.src='/api/qr/'+encodeURIComponent(id)+'.png'; qrImages.set(id,q); } return qrImages.get(id); }
+function buildTrackOverlay() { if (!image.naturalWidth) return; const overlay=document.createElement('canvas'); overlay.width=canvas.width; overlay.height=canvas.height; const overlayContext=overlay.getContext('2d'); overlayContext.drawImage(image,0,0,overlay.width,overlay.height); const pixels=overlayContext.getImageData(0,0,overlay.width,overlay.height); for(let i=0;i<pixels.data.length;i+=4){const brightness=.299*pixels.data[i]+.587*pixels.data[i+1]+.114*pixels.data[i+2]; pixels.data[i+3]=brightness<180?255:0;} overlayContext.putImageData(pixels,0,0); trackOverlay=overlay; }
 function selectStation(index, additive=false){if(!additive)selectedStations.clear();if(selectedStations.has(index)&&additive)selectedStations.delete(index);else selectedStations.add(index);selected=selectedStations.has(index)?index:(selectedStations.values().next().value??-1);selectedRobot=false;$('stationId').value=selected>=0?stations[selected].id:'';}
 function uniqueId(base){let id=base,n=1;while(stations.some(s=>s.id===id))id=`${base}_copy${n++}`;return id;}
 function renameSelected(){const id=$('stationId').value.trim();if(selected<0||!id)return;if(stations.some((s,i)=>i!==selected&&s.id===id))return alert('Checkpoint IDs must be unique.');qrImages.delete(stations[selected].id);stations[selected].id=id;render();}
 function render() {
   ctx.clearRect(0,0,canvas.width,canvas.height); ctx.fillStyle='#101318'; ctx.fillRect(0,0,canvas.width,canvas.height);
   ctx.save(); ctx.translate(canvas.width/2+view.panX,canvas.height/2+view.panY); ctx.scale(view.zoom,view.zoom); ctx.translate(-canvas.width/2,-canvas.height/2);
-  if (image.src) ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  if (surfaceImage.src && surfaceImage.complete && surfaceImage.naturalWidth) ctx.drawImage(surfaceImage,0,0,canvas.width,canvas.height);
+  if (image.src && image.complete && image.naturalWidth) {
+    if (surfaceImage.src && trackOverlay) ctx.drawImage(trackOverlay,0,0,canvas.width,canvas.height);
+    else ctx.drawImage(image,0,0,canvas.width,canvas.height);
+  }
   else { ctx.fillStyle='#fff'; ctx.fillRect(0,0,canvas.width,canvas.height); }
   ctx.strokeStyle='rgba(30,100,190,.35)'; ctx.lineWidth=1;
   for(let i=0;i<=6;i++) { const p=i*canvas.width/6; ctx.beginPath();ctx.moveTo(p,0);ctx.lineTo(p,canvas.height);ctx.stroke();ctx.beginPath();ctx.moveTo(0,p);ctx.lineTo(canvas.width,p);ctx.stroke(); }
@@ -79,16 +87,18 @@ canvas.onpointerdown=e=> { const p=canvasPoint(e), hit=stations.findIndex(s=>{co
 canvas.onpointermove=e=> { const p=canvasPoint(e); if(dragging||draggingRobot) { const s=size(), q=pxToWorld(screenToMap(p).x,screenToMap(p).y), x=Math.max(-s.w/2,Math.min(s.w/2,q.x)), y=Math.max(-s.h/2,Math.min(s.h/2,q.y)); if(dragging){stations[selected].x=x;stations[selected].y=y;} else setRobotPosition(x,y); render(); } else if(panning) { view.panX+=p.x-view.lastX; view.panY+=p.y-view.lastY; view.lastX=p.x; view.lastY=p.y; render(); } };
 canvas.onpointerup=canvas.onpointercancel=()=>{dragging=false;draggingRobot=false;panning=false;};
 canvas.addEventListener('wheel', e=> { e.preventDefault(); const p=canvasPoint(e), old=view.zoom, next=Math.max(.25,Math.min(8,old*(e.deltaY<0?1.15:1/1.15))); view.panX=p.x-canvas.width/2-(p.x-canvas.width/2-view.panX)/old*next; view.panY=p.y-canvas.height/2-(p.y-canvas.height/2-view.panY)/old*next; view.zoom=next; render(); }, {passive:false});
-function loadProjectFloor() { const path=$('floorPath').value.trim().replace(/^\/+/, ''); if(!path) return status('Enter a project floor path.'); image.src='/'+path; status('Loading '+path+'…'); }
+function loadProjectFloor() { const path=$('floorPath').value.trim().replace(/^\/+/, ''); if(!path) return status('Enter a project track layout path.'); trackOverlay=null; image.src='/'+path; status('Loading '+path+'…'); }
+function loadSurface() { const path=$('surfacePath').value.trim().replace(/^\/+/, ''); if(!path) { surfaceImage.removeAttribute('src'); render(); return; } surfaceImage.src='/'+path; status('Loading surface '+path+'…'); }
 $('imageInput').onchange=e=> { const file=e.target.files[0]; if(file) { image.src=URL.createObjectURL(file); status('Previewing '+file.name+'. Set its project path before saving.'); } };
 $('loadFloor').onclick=loadProjectFloor;
+$('loadSurface').onclick=loadSurface;
 $('add').onclick=()=> { const id=$('stationId').value.trim(); if(!id || stations.some(s=>s.id===id)) return alert('Use a unique checkpoint ID.'); stations.push({id,x:0,y:0,yaw:0}); selectedStations=new Set([stations.length-1]);selected=stations.length-1;selectedRobot=false; render(); };
 function removeSelected(){[...selectedStations].sort((a,b)=>b-a).forEach(i=>stations.splice(i,1));selectedStations.clear();selected=-1;render();}
 $('remove').onclick=removeSelected;
 $('resetView').onclick=()=> { view.zoom=1; view.panX=0; view.panY=0; render(); };
-$('jsonInput').onchange=e=> { const file=e.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=()=>{try { const m=JSON.parse(reader.result); $('floorPath').value=m.floor_png||''; $('width').value=m.floor_size_m?.[0]||6; $('height').value=m.floor_size_m?.[1]||6; $('robotUri').value=m.robot?.model_uri||'model://amr'; $('robotPose').value=(m.robot?.start_pose||[0,-2,.005,0,0,0]).join(' '); stations=(m.checkpoints||[]).map(s=>({...s,yaw:s.yaw||0})); selected=-1;selectedStations.clear();selectedRobot=false; if(m.floor_png) image.src='/'+m.floor_png; render(); }catch(_){alert('Invalid map JSON.');}}; reader.readAsText(file); };
-$('export').onclick=()=> { const pose=$('robotPose').value.trim().split(/\s+/).map(Number); if(pose.length!==6||pose.some(Number.isNaN)) return alert('Robot pose needs six numbers.'); const data={template:'sdf/track_with_robot.sdf',floor_png:$('floorPath').value.trim(),floor_size_m:[Number($('width').value),Number($('height').value)],robot:{model_uri:$('robotUri').value.trim(),start_pose:pose},checkpoints:stations}; const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='my_map.json'; a.click(); URL.revokeObjectURL(a.href); };
-['width','height','robotPose'].forEach(id=>$(id).oninput=render); image.onload=()=>{status('Floor loaded. Add a checkpoint, then drag its QR image or blue robot footprint.');render();}; image.onerror=()=>{status('Could not load floor. Choose a PNG or check the project floor path.');render();}; loadProjectFloor(); render();
+$('jsonInput').onchange=e=> { const file=e.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=()=>{try { const m=JSON.parse(reader.result), track=m.track_png||m.floor_png||''; $('floorPath').value=track; $('surfacePath').value=m.surface_png||''; $('width').value=m.floor_size_m?.[0]||6; $('height').value=m.floor_size_m?.[1]||6; $('robotUri').value=m.robot?.model_uri||'model://amr'; $('robotPose').value=(m.robot?.start_pose||[0,-2,.005,0,0,0]).join(' '); stations=(m.checkpoints||[]).map(s=>({...s,yaw:s.yaw||0})); selected=-1;selectedStations.clear();selectedRobot=false; if(track) { trackOverlay=null; image.src='/'+track; } loadSurface(); render(); }catch(_){alert('Invalid map JSON.');}}; reader.readAsText(file); };
+$('export').onclick=()=> { const pose=$('robotPose').value.trim().split(/\s+/).map(Number), track=$('floorPath').value.trim(), surface=$('surfacePath').value.trim(); if(pose.length!==6||pose.some(Number.isNaN)) return alert('Robot pose needs six numbers.'); if(!track) return alert('Choose a project track layout path.'); const data={template:'sdf/track_with_robot.sdf',floor_size_m:[Number($('width').value),Number($('height').value)],robot:{model_uri:$('robotUri').value.trim(),start_pose:pose},checkpoints:stations}; if(surface) { data.track_png=track; data.surface_png=surface; } else data.floor_png=track; const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}), a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='my_map.json'; a.click(); URL.revokeObjectURL(a.href); };
+['width','height','robotPose'].forEach(id=>$(id).oninput=render); image.onload=()=>{buildTrackOverlay();status('Track layout loaded. Add a checkpoint, then drag its QR image or blue robot footprint.');render();}; image.onerror=()=>{status('Could not load track layout. Choose a PNG or check the project path.');render();}; surfaceImage.onload=()=>{status('Surface texture loaded under the track layout.');render();}; surfaceImage.onerror=()=>{status('Could not load surface texture; previewing the track layout alone.');surfaceImage.removeAttribute('src');render();}; loadProjectFloor(); render();
 $('stationId').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();renameSelected();}});
 window.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName))return;const d=e.shiftKey?.05:.01,turn=(e.shiftKey?-1:1)*Math.PI/12,ctrl=e.ctrlKey||e.metaKey;if(ctrl&&e.key.toLowerCase()==='c'){clipboard=[...selectedStations].map(i=>({...stations[i]}));e.preventDefault();return;}if(ctrl&&e.key.toLowerCase()==='v'){const copies=clipboard.map(s=>({...s,id:uniqueId(s.id),x:s.x+.05,y:s.y+.05}));const first=stations.length;stations.push(...copies);selectedStations=new Set(copies.map((_,i)=>first+i));selected=first;selectedRobot=false;e.preventDefault();render();return;}if(e.key.toLowerCase()==='r'){if(selectedStations.size)selectedStations.forEach(i=>stations[i].yaw=(stations[i].yaw||0)+turn);else if(selectedRobot){const p=robotPose();p[5]+=turn;setRobotPose(p);}else return;e.preventDefault();render();}else if(e.key==='Delete')removeSelected();else if(e.key==='Escape'){selected=-1;selectedStations.clear();selectedRobot=false;render();}else if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){let dx=0,dy=0;if(e.key==='ArrowUp')dy=d;if(e.key==='ArrowDown')dy=-d;if(e.key==='ArrowLeft')dx=-d;if(e.key==='ArrowRight')dx=d;if(selectedStations.size)selectedStations.forEach(i=>{stations[i].x+=dx;stations[i].y+=dy;});else if(selectedRobot){const p=robotPose();p[0]+=dx;p[1]+=dy;setRobotPose(p);}else return;e.preventDefault();render();}});
 </script>
@@ -230,20 +240,25 @@ window.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA'].includes(document.
   $('jsonInput').onchange = event => {
     const file = event.target.files[0]; if (!file) return;
     const reader = new FileReader(); reader.onload = () => { try {
-      const map = JSON.parse(reader.result); $('floorPath').value = map.floor_png || '';
+      const map = JSON.parse(reader.result), track = map.track_png || map.floor_png || '';
+      $('floorPath').value = track; $('surfacePath').value = map.surface_png || '';
       $('width').value = map.floor_size_m?.[0] || 6; $('height').value = map.floor_size_m?.[1] || 6;
       $('robotUri').value = map.robot?.model_uri || 'model://amr';
       $('robotPose').value = (map.robot?.start_pose || [0,-2,.005,0,0,0]).join(' ');
       stations = (map.checkpoints || []).map(station => ({...station,yaw:station.yaw || 0}));
       normaliseNavigation(map.navigation); selected = -1; selectedStations.clear(); selectedRobot = false; selectedEdge = -1;
-      if (map.floor_png) image.src = '/' + map.floor_png; render();
+      if (track) { trackOverlay = null; image.src = '/' + track; } loadSurface(); render();
     } catch (_) { alert('Invalid map JSON.'); } }; reader.readAsText(file);
   };
   $('export').onclick = () => {
     const pose = $('robotPose').value.trim().split(/\s+/).map(Number);
     if (pose.length !== 6 || pose.some(Number.isNaN)) return alert('Robot pose needs six numbers.');
     const issues = graphIssues(); if (issues.length) return alert(`Fix navigation graph first:\n${issues.join('\n')}`);
-    const data = {template:'sdf/track_with_robot.sdf', floor_png:$('floorPath').value.trim(), floor_size_m:[Number($('width').value),Number($('height').value)], robot:{model_uri:$('robotUri').value.trim(),start_pose:pose}, checkpoints:stations};
+    const track = $('floorPath').value.trim(), surface = $('surfacePath').value.trim();
+    if (!track) return alert('Choose a project track layout path.');
+    const data = {template:'sdf/track_with_robot.sdf', floor_size_m:[Number($('width').value),Number($('height').value)], robot:{model_uri:$('robotUri').value.trim(),start_pose:pose}, checkpoints:stations};
+    if (surface) { data.track_png = track; data.surface_png = surface; }
+    else data.floor_png = track;
     if (navigation.edges.length || navigation.default_start) data.navigation = navigation;
     const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'}), link = document.createElement('a');
     link.href = URL.createObjectURL(blob); link.download = 'my_map.json'; link.click(); URL.revokeObjectURL(link.href);
