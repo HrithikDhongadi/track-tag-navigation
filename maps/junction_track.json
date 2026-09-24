@@ -1,0 +1,501 @@
+{
+  "template": "sdf/track_with_robot.sdf",
+  "floor_png": "assets/track/Track_v2.png",
+  "floor_size_m": [
+    6,
+    6
+  ],
+  "robot": {
+    "model_uri": "model://amr",
+    "start_pose": [
+      2.015,
+      0,
+      0.005,
+      0,
+      0,
+      1.5708
+    ]
+  },
+  "checkpoints": [
+    {
+      "id": "Turn 1 Entry",
+      "x": 1.915,
+      "y": 1.45,
+      "yaw": 0
+    },
+    {
+      "id": "Turn 1 Exit",
+      "x": 1.45,
+      "y": 1.915,
+      "yaw": 1.5707963267948963
+    },
+    {
+      "id": "Turn 2 Entry",
+      "x": -1.45,
+      "y": 1.915,
+      "yaw": 1.5707963267948966
+    },
+    {
+      "id": "Turn 2 Exit",
+      "x": -1.915,
+      "y": 1.45,
+      "yaw": 3.1415926535897936
+    },
+    {
+      "id": "Turn 3 Entry",
+      "x": -1.915,
+      "y": -1.45,
+      "yaw": 3.1415926535897936
+    },
+    {
+      "id": "Turn 3 Exit",
+      "x": -1.45,
+      "y": -1.915,
+      "yaw": 4.71238898038469
+    },
+    {
+      "id": "Turn 4 Entry",
+      "x": 1.45,
+      "y": -1.915,
+      "yaw": 4.71238898038469
+    },
+    {
+      "id": "Turn 4 Exit",
+      "x": 1.915,
+      "y": -1.45,
+      "yaw": 0
+    },
+    {
+      "id": "Station A",
+      "x": 1.915,
+      "y": 0,
+      "yaw": 0
+    },
+    {
+      "id": "J1A",
+      "x": 0.45,
+      "y": 1.915,
+      "yaw": 1.5707963267948963
+    },
+    {
+      "id": "Station C",
+      "x": -1.915,
+      "y": 0,
+      "yaw": 3.1415926535897936
+    },
+    {
+      "id": "J2C",
+      "x": 0.45,
+      "y": -1.915,
+      "yaw": 4.71238898038469
+    },
+    {
+      "id": "J1B",
+      "x": 0.115,
+      "y": 1.45,
+      "yaw": 1.5707963267948963
+    },
+    {
+      "id": "J1C",
+      "x": -0.45,
+      "y": 1.915,
+      "yaw": 1.5707963267948963
+    },
+    {
+      "id": "J2B",
+      "x": 0.115,
+      "y": -1.45,
+      "yaw": 4.71238898038469
+    },
+    {
+      "id": "J2A",
+      "x": -0.45,
+      "y": -1.915,
+      "yaw": 4.71238898038469
+    },
+    {
+      "id": "Station B",
+      "x": 0.115,
+      "y": 0,
+      "yaw": 4.71238898038469
+    }
+  ],
+  "navigation": {
+    "schema_version": 1,
+    "default_start": "Station A",
+    "edges": [
+      {
+        "id": "a_t1e",
+        "from": "Station A",
+        "to": "Turn 1 Entry",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t1e_a",
+        "from": "Turn 1 Entry",
+        "to": "Station A",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t1e_t1x",
+        "from": "Turn 1 Entry",
+        "to": "Turn 1 Exit",
+        "cost_m": 0.79,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t1x_t1e",
+        "from": "Turn 1 Exit",
+        "to": "Turn 1 Entry",
+        "cost_m": 0.79,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t1x_j1a",
+        "from": "Turn 1 Exit",
+        "to": "J1A",
+        "cost_m": 1,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "j1a_t1x",
+        "from": "J1A",
+        "to": "Turn 1 Exit",
+        "cost_m": 1,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "j1a_j1c",
+        "from": "J1A",
+        "to": "J1C",
+        "cost_m": 0.9,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "straight"
+        }
+      },
+      {
+        "id": "j1c_j1a",
+        "from": "J1C",
+        "to": "J1A",
+        "cost_m": 0.9,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "straight"
+        }
+      },
+      {
+        "id": "j1a_j1b",
+        "from": "J1A",
+        "to": "J1B",
+        "cost_m": 0.7,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "left"
+        }
+      },
+      {
+        "id": "j1b_j1a",
+        "from": "J1B",
+        "to": "J1A",
+        "cost_m": 0.7,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "right"
+        }
+      },
+      {
+        "id": "j1b_j1c",
+        "from": "J1B",
+        "to": "J1C",
+        "cost_m": 0.7,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "left"
+        }
+      },
+      {
+        "id": "j1c_j1b",
+        "from": "J1C",
+        "to": "J1B",
+        "cost_m": 0.7,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "right"
+        }
+      },
+      {
+        "id": "j1c_t2e",
+        "from": "J1C",
+        "to": "Turn 2 Entry",
+        "cost_m": 1,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t2e_j1c",
+        "from": "Turn 2 Entry",
+        "to": "J1C",
+        "cost_m": 1,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t2e_t2x",
+        "from": "Turn 2 Entry",
+        "to": "Turn 2 Exit",
+        "cost_m": 0.79,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t2x_t2e",
+        "from": "Turn 2 Exit",
+        "to": "Turn 2 Entry",
+        "cost_m": 0.79,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t2x_c",
+        "from": "Turn 2 Exit",
+        "to": "Station C",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "c_t2x",
+        "from": "Station C",
+        "to": "Turn 2 Exit",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "c_t3e",
+        "from": "Station C",
+        "to": "Turn 3 Entry",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t3e_c",
+        "from": "Turn 3 Entry",
+        "to": "Station C",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t3e_t3x",
+        "from": "Turn 3 Entry",
+        "to": "Turn 3 Exit",
+        "cost_m": 0.79,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t3x_t3e",
+        "from": "Turn 3 Exit",
+        "to": "Turn 3 Entry",
+        "cost_m": 0.79,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t3x_j2a",
+        "from": "Turn 3 Exit",
+        "to": "J2A",
+        "cost_m": 1,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "j2a_t3x",
+        "from": "J2A",
+        "to": "Turn 3 Exit",
+        "cost_m": 1,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "j2a_j2c",
+        "from": "J2A",
+        "to": "J2C",
+        "cost_m": 0.9,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "straight"
+        }
+      },
+      {
+        "id": "j2c_j2a",
+        "from": "J2C",
+        "to": "J2A",
+        "cost_m": 0.9,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "straight"
+        }
+      },
+      {
+        "id": "j2a_j2b",
+        "from": "J2A",
+        "to": "J2B",
+        "cost_m": 0.7,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "left"
+        }
+      },
+      {
+        "id": "j2b_j2a",
+        "from": "J2B",
+        "to": "J2A",
+        "cost_m": 0.7,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "right"
+        }
+      },
+      {
+        "id": "j2b_j2c",
+        "from": "J2B",
+        "to": "J2C",
+        "cost_m": 0.7,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "left"
+        }
+      },
+      {
+        "id": "j2c_j2b",
+        "from": "J2C",
+        "to": "J2B",
+        "cost_m": 0.7,
+        "maneuver": {
+          "type": "junction_turn",
+          "direction": "right"
+        }
+      },
+      {
+        "id": "j2c_t4e",
+        "from": "J2C",
+        "to": "Turn 4 Entry",
+        "cost_m": 1,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t4e_j2c",
+        "from": "Turn 4 Entry",
+        "to": "J2C",
+        "cost_m": 1,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t4e_t4x",
+        "from": "Turn 4 Entry",
+        "to": "Turn 4 Exit",
+        "cost_m": 0.79,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t4x_t4e",
+        "from": "Turn 4 Exit",
+        "to": "Turn 4 Entry",
+        "cost_m": 0.79,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "t4x_a",
+        "from": "Turn 4 Exit",
+        "to": "Station A",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "a_t4x",
+        "from": "Station A",
+        "to": "Turn 4 Exit",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "j1b_b",
+        "from": "J1B",
+        "to": "Station B",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "b_j1b",
+        "from": "Station B",
+        "to": "J1B",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "b_j2b",
+        "from": "Station B",
+        "to": "J2B",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      },
+      {
+        "id": "j2b_b",
+        "from": "J2B",
+        "to": "Station B",
+        "cost_m": 1.45,
+        "maneuver": {
+          "type": "follow"
+        }
+      }
+    ]
+  }
+}

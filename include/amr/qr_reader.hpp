@@ -4,6 +4,6 @@
 
 namespace amr {
 
-int runQrReader(bool view, std::atomic_bool &running);
+int runQrReader(bool view, bool frontView, std::atomic_bool &running);
 
 }  // namespace amr

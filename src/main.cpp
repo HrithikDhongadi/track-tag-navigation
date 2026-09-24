@@ -16,7 +16,7 @@ int main(int argc, char **argv) {
   std::atomic_bool running = true;
   int lineStatus = 0, qrStatus = 0;
   std::thread qrThread([&] {
-    qrStatus = amr::runQrReader(options.view, running);
+    qrStatus = amr::runQrReader(options.view, options.frontView, running);
     if (qrStatus) running.store(false, std::memory_order_relaxed);
   });
   std::thread lineThread([&] {

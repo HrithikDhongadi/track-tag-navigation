@@ -9,13 +9,17 @@ controller_args=()
 gazebo_args=(--render-engine ogre2)
 auto_run=false
 headless=false
+config_path=""
 
 usage() {
   cat <<EOF
-Usage: $0 [--run] [--view] [--headless] [--world sdf/my_map.sdf]
+Usage: $0 [--run] [--view] [--front-view] [--turn left|right|straight] [--config configs/my_profile.json] [--headless] [--world sdf/my_map.sdf]
 
   --run       start physics immediately (otherwise press Play in Fortress)
   --view      show the QR camera window (adds display overhead)
+  --front-view show the forward heading camera window (adds display overhead)
+  --turn       test one selected junction exit: left, right, or straight
+  --config     load an editable version-1 control JSON profile
   --headless  run server-only with off-screen camera rendering; use this to
               measure maximum real-time performance (implies --run)
   --world     launch a generated SDF instead of the tested default world
@@ -26,6 +30,20 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --run) auto_run=true ;;
     --view) controller_args+=(--view) ;;
+    --front-view) controller_args+=(--front-view) ;;
+    --config)
+      shift
+      [[ $# -gt 0 ]] || { echo "--config requires a JSON file" >&2; exit 2; }
+      config_path="$1"
+      [[ "$config_path" = /* ]] || config_path="$project_root/$config_path"
+      controller_args+=(--config "$config_path")
+      ;;
+    --turn)
+      shift
+      [[ $# -gt 0 ]] || { echo "--turn requires left, right, or straight" >&2; exit 2; }
+      case "$1" in left|right|straight) ;; *) echo "--turn requires left, right, or straight" >&2; exit 2 ;; esac
+      controller_args+=(--turn "$1")
+      ;;
     --headless) headless=true; auto_run=true ;;
     --world)
       shift
@@ -38,6 +56,11 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ -n "$config_path" && ! -f "$config_path" ]]; then
+  echo "Control config not found: $config_path" >&2
+  exit 1
+fi
 
 if [[ ! -f "$world" ]]; then
   echo "World not found: $world" >&2

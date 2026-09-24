@@ -57,6 +57,49 @@ def add_marker(world, identifier, x, y, yaw, texture_path):
     ET.SubElement(metal, 'roughness').text = '1'
 
 
+def validate_navigation(navigation, checkpoint_ids):
+    """Validate the routing layer without coupling it to SDF generation."""
+    if navigation is None:
+        return
+    if not isinstance(navigation, dict):
+        raise ValueError("navigation must be an object.")
+    if navigation.get("schema_version", 1) != 1:
+        raise ValueError("navigation.schema_version must be 1.")
+    start = navigation.get("default_start", "")
+    if start and start not in checkpoint_ids:
+        raise ValueError("navigation.default_start must name a checkpoint.")
+    edges = navigation.get("edges", [])
+    if not isinstance(edges, list):
+        raise ValueError("navigation.edges must be a list.")
+    ids = set()
+    pairs = set()
+    for edge in edges:
+        if not isinstance(edge, dict):
+            raise ValueError("Each navigation edge must be an object.")
+        edge_id = str(edge.get("id", "")).strip()
+        source = str(edge.get("from", "")).strip()
+        destination = str(edge.get("to", "")).strip()
+        if not edge_id or edge_id in ids:
+            raise ValueError("Navigation edge IDs must be non-empty and unique.")
+        if source not in checkpoint_ids or destination not in checkpoint_ids or source == destination:
+            raise ValueError(f"Invalid navigation edge: {source} -> {destination}.")
+        if (source, destination) in pairs:
+            raise ValueError(f"Duplicate navigation edge: {source} -> {destination}.")
+        try:
+            cost = float(edge["cost_m"])
+        except (KeyError, TypeError, ValueError) as error:
+            raise ValueError(f"Navigation edge {edge_id} needs a positive cost_m.") from error
+        if cost <= 0:
+            raise ValueError(f"Navigation edge {edge_id} needs a positive cost_m.")
+        maneuver = edge.get("maneuver", {"type": "follow"})
+        if not isinstance(maneuver, dict) or maneuver.get("type") not in ("follow", "junction_turn"):
+            raise ValueError(f"Navigation edge {edge_id} has an invalid maneuver.")
+        if maneuver["type"] == "junction_turn" and maneuver.get("direction") not in ("left", "right", "straight"):
+            raise ValueError(f"Navigation edge {edge_id} has an invalid turn direction.")
+        ids.add(edge_id)
+        pairs.add((source, destination))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('map_json', type=Path)
@@ -114,6 +157,10 @@ def main():
             names.add(identifier)
             markers.append((identifier, x, y, yaw, qr_dir / f'{identifier}.png'))
     except (KeyError, TypeError, ValueError) as error:
+        parser.error(str(error))
+    try:
+        validate_navigation(config.get("navigation"), names)
+    except ValueError as error:
         parser.error(str(error))
     targets = [output, *(marker[4] for marker in markers)]
     if not args.force and any(path.exists() for path in targets):

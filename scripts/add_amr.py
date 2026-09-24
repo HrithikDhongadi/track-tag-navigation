@@ -93,6 +93,10 @@ def build_robot(x, y, yaw):
     camera(base, 'qr', 0, 0, -.06, 640, 480, 1.8, 5)
     shape(base, 'qr_housing', 'box', {'size': '0.025 0.025 0.012'},
           '0 0 -0.049 0 0 0', '0.1 0.1 0.1 1', collision=False)
+    # Forward-facing heading view, kept low-rate for real-time performance.
+    camera(base, 'front', .21, 0, .04, 320, 240, 1.2, 5)
+    shape(base, 'front_camera_housing', 'box', {'size': '0.03 0.04 0.025'},
+          '0.20 0 0.04 0 0 0', '0.1 0.1 0.1 1', collision=False)
 
     for side, lateral in (('left', .17), ('right', -.17)):
         sign = 1 if lateral > 0 else -1

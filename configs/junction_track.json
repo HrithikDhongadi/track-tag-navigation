@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "line_follower": {
+    "speed_mps": 0.30,
+    "kp": 0.45,
+    "dark_threshold": 110,
+    "camera_timeout_s": 2.0
+  },
+  "junction": {
+    "minimum_active_sensors": 4,
+    "active_sensor_dark_fraction": 0.10,
+    "minimum_total_dark": 3.0,
+    "turn_speed_factor": 0.55,
+    "left_bias_radps": 0.45,
+    "right_bias_radps": 0.45,
+    "max_turn_radps": 0.80,
+    "straight_turn_limit_radps": 0.20,
+    "commit_duration_s": 0.70,
+    "reacquire_speed_factor": 0.65,
+    "reacquire_stable_s": 0.15,
+    "cooldown_s": 0.80
+  }
+}

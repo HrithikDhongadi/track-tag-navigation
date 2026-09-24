@@ -21,6 +21,7 @@ pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
 add_executable(track_tag_navigation_controller
   src/main.cpp
   src/options.cpp
+  src/control_config.cpp
   src/runtime.cpp
   src/line_follower.cpp
   src/qr_reader.cpp)

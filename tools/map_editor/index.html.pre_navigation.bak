@@ -4,14 +4,13 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AMR Map Editor</title>
 <style>
-  html, body { height: 100%; overflow: hidden; }
   body { margin: 0; background: #17191d; color: #e8edf2; font: 14px system-ui, sans-serif; }
-  main { display: grid; grid-template-columns: 330px minmax(500px, 1fr); gap: 16px; padding: 16px; height: 100vh; box-sizing: border-box; overflow: hidden; }
-  aside { background: #242932; border-radius: 8px; padding: 16px; overflow-y: auto; min-height: 0; }
+  main { display: grid; grid-template-columns: 330px minmax(500px, 1fr); gap: 16px; padding: 16px; }
+  aside { background: #242932; border-radius: 8px; padding: 16px; }
   h1 { font-size: 20px; margin-top: 0; } label { display: block; margin-top: 12px; }
-  input, select, button { box-sizing: border-box; margin-top: 5px; padding: 7px; width: 100%; }
+  input, button { box-sizing: border-box; margin-top: 5px; padding: 7px; width: 100%; }
   button { background: #3977be; color: white; border: 0; border-radius: 4px; cursor: pointer; }
-  button.secondary { background: #4a5260; } #canvasWrap { display: grid; place-items: center; overflow: hidden; min-height: 0; }
+  button.secondary { background: #4a5260; } #canvasWrap { display: grid; place-items: center; overflow: auto; }
   canvas { background: #fff; box-shadow: 0 4px 24px #000; max-width: calc(100vw - 380px); max-height: calc(100vh - 32px); touch-action: none; }
   #stations { padding-left: 18px; } #stations li { cursor: pointer; margin: 6px 0; }
   .hint { color: #b7c3d0; line-height: 1.4; } .row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -43,7 +42,7 @@ const canvas = document.querySelector('#map'), ctx = canvas.getContext('2d');
 const image = new Image(); let stations = [], selected = -1, selectedRobot = false, dragging = false, draggingRobot = false, panning = false, clipboard = [];
 let selectedStations = new Set();
 const view = {zoom: 1, panX: 0, panY: 0, lastX: 0, lastY: 0};
-const qrImages = new Map(); let navigation={schema_version:1,default_start:"",edges:[]};
+const qrImages = new Map();
 const $ = id => document.getElementById(id);
 const status = text => $('status').textContent = text;
 const size = () => ({w: Number($('width').value) || 6, h: Number($('height').value) || 6});
@@ -92,164 +91,4 @@ $('export').onclick=()=> { const pose=$('robotPose').value.trim().split(/\s+/).m
 $('stationId').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();renameSelected();}});
 window.addEventListener('keydown',e=>{if(['INPUT','TEXTAREA'].includes(document.activeElement.tagName))return;const d=e.shiftKey?.05:.01,turn=(e.shiftKey?-1:1)*Math.PI/12,ctrl=e.ctrlKey||e.metaKey;if(ctrl&&e.key.toLowerCase()==='c'){clipboard=[...selectedStations].map(i=>({...stations[i]}));e.preventDefault();return;}if(ctrl&&e.key.toLowerCase()==='v'){const copies=clipboard.map(s=>({...s,id:uniqueId(s.id),x:s.x+.05,y:s.y+.05}));const first=stations.length;stations.push(...copies);selectedStations=new Set(copies.map((_,i)=>first+i));selected=first;selectedRobot=false;e.preventDefault();render();return;}if(e.key.toLowerCase()==='r'){if(selectedStations.size)selectedStations.forEach(i=>stations[i].yaw=(stations[i].yaw||0)+turn);else if(selectedRobot){const p=robotPose();p[5]+=turn;setRobotPose(p);}else return;e.preventDefault();render();}else if(e.key==='Delete')removeSelected();else if(e.key==='Escape'){selected=-1;selectedStations.clear();selectedRobot=false;render();}else if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)){let dx=0,dy=0;if(e.key==='ArrowUp')dy=d;if(e.key==='ArrowDown')dy=-d;if(e.key==='ArrowLeft')dx=-d;if(e.key==='ArrowRight')dx=d;if(selectedStations.size)selectedStations.forEach(i=>{stations[i].x+=dx;stations[i].y+=dy;});else if(selectedRobot){const p=robotPose();p[0]+=dx;p[1]+=dy;setRobotPose(p);}else return;e.preventDefault();render();}});
 </script>
-<script>
-(() => {
-  const panel = document.createElement('div');
-  panel.id = 'navigationPanel';
-  panel.innerHTML = `
-    <hr style="border-color:#4a5260;margin:18px 0">
-    <h2 style="font-size:16px">Navigation graph</h2>
-    <p class="hint">QR checkpoints are graph nodes. Add directed edges; assign a turn only where the robot reaches a junction.</p>
-    <label>Default start <select id="navStart"></select></label>
-    <div class="row"><label>From <select id="edgeFrom"></select></label>
-      <label>To <select id="edgeTo"></select></label></div>
-    <div class="row"><label>Cost (m) <input id="edgeCost" type="number" min="0.001" step="0.01" placeholder="auto"></label>
-      <label>Maneuver <select id="edgeManeuver"><option value="follow">follow line</option><option value="left">turn left</option><option value="right">turn right</option><option value="straight">go straight</option></select></label></div>
-    <button id="addEdge">Add directed edge</button>
-    <button id="removeEdge" class="secondary">Remove selected edge</button>
-    <button id="validateGraph" class="secondary">Validate navigation graph</button>
-    <p id="navStatus" class="hint">No navigation edges.</p>
-    <ul id="navEdges" style="padding-left:18px"></ul>`;
-  document.querySelector('aside').insertBefore(panel, $('jsonInput').parentElement);
-
-  let selectedEdge = -1;
-  const navStatus = text => $('navStatus').textContent = text;
-  const escapeHtml = value => String(value).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-  const stationById = id => stations.find(s => s.id === id);
-  const edgeDistance = (from, to) => {
-    const a = stationById(from), b = stationById(to);
-    return a && b ? Math.hypot(a.x - b.x, a.y - b.y) : 1;
-  };
-  const maneuver = edge => edge.maneuver?.type === 'junction_turn' ? edge.maneuver.direction : 'follow';
-  const maneuverData = direction => direction === 'follow' ? {type:'follow'} : {type:'junction_turn', direction};
-  const makeEdgeId = () => {
-    let n = 1, id;
-    do { id = `edge_${n++}`; } while (navigation.edges.some(edge => edge.id === id));
-    return id;
-  };
-  function normaliseNavigation(raw) {
-    const source = raw && typeof raw === 'object' ? raw : {};
-    navigation = {schema_version: 1, default_start: String(source.default_start || ''), edges: []};
-    for (const edge of Array.isArray(source.edges) ? source.edges : []) {
-      if (!edge || typeof edge !== 'object' || !edge.from || !edge.to) continue;
-      const direction = edge.maneuver?.type === 'junction_turn' ? edge.maneuver.direction :
-        ['left','right','straight'].includes(edge.turn) ? edge.turn : 'follow';
-      const cost = Number(edge.cost_m);
-      navigation.edges.push({
-        id: String(edge.id || makeEdgeId()), from: String(edge.from), to: String(edge.to),
-        cost_m: Number.isFinite(cost) && cost > 0 ? cost : edgeDistance(edge.from, edge.to),
-        maneuver: maneuverData(direction)
-      });
-    }
-  }
-  function refreshNavigationControls() {
-    const ids = stations.map(s => s.id);
-    for (const id of ['navStart','edgeFrom','edgeTo']) {
-      const select = $(id); if (!select) continue;
-      const previous = select.value;
-      select.innerHTML = (id === 'navStart' ? '<option value="">Not set</option>' : '<option value="">Select QR</option>') +
-        ids.map(value => `<option value="${escapeHtml(value)}">${escapeHtml(value)}</option>`).join('');
-      select.value = ids.includes(previous) || (id === 'navStart' && !previous) ? previous : '';
-    }
-    $('navStart').value = ids.includes(navigation.default_start) ? navigation.default_start : '';
-    $('navEdges').innerHTML = navigation.edges.map((edge, index) =>
-      `<li data-edge="${index}" style="cursor:pointer;color:${index===selectedEdge?'#ff9f1c':'inherit'}">${escapeHtml(edge.from)} → ${escapeHtml(edge.to)} · ${edge.cost_m.toFixed(2)} m · ${maneuver(edge)}</li>`).join('');
-    document.querySelectorAll('#navEdges li').forEach(item => item.onclick = () => { selectedEdge = Number(item.dataset.edge); render(); });
-  }
-  function graphIssues() {
-    const ids = new Set(stations.map(s => s.id)), issues = [], seen = new Set();
-    if (navigation.default_start && !ids.has(navigation.default_start)) issues.push('Default start does not name a checkpoint.');
-    for (const edge of navigation.edges) {
-      if (!ids.has(edge.from) || !ids.has(edge.to)) issues.push(`Unknown QR in ${edge.from} → ${edge.to}.`);
-      else if (edge.from === edge.to) issues.push(`Self-edge at ${edge.from}.`);
-      else if (!(Number(edge.cost_m) > 0)) issues.push(`Invalid cost for ${edge.from} → ${edge.to}.`);
-      const key = `${edge.from}\u0000${edge.to}`;
-      if (seen.has(key)) issues.push(`Duplicate edge ${edge.from} → ${edge.to}.`);
-      seen.add(key);
-      if (!['follow','left','right','straight'].includes(maneuver(edge))) issues.push(`Invalid maneuver on ${edge.from} → ${edge.to}.`);
-    }
-    if (navigation.default_start && navigation.edges.length) {
-      const reached = new Set([navigation.default_start]);
-      let changed = true;
-      while (changed) { changed = false; for (const edge of navigation.edges)
-        if (reached.has(edge.from) && !reached.has(edge.to)) { reached.add(edge.to); changed = true; } }
-      const unreachable = stations.map(s => s.id).filter(id => !reached.has(id));
-      if (unreachable.length) issues.push(`Unreachable from start: ${unreachable.join(', ')}.`);
-    }
-    return issues;
-  }
-  function drawArrow(from, to, color, selected) {
-    const a = worldToPx(from.x, from.y), b = worldToPx(to.x, to.y), dx = b.x-a.x, dy = b.y-a.y;
-    const length = Math.hypot(dx,dy); if (length < 1) return;
-    const ux = dx/length, uy = dy/length, mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
-    ctx.save(); ctx.strokeStyle = color; ctx.fillStyle = color; ctx.globalAlpha = selected ? 1 : .78;
-    ctx.lineWidth = selected ? 4 : 2; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(mx+ux*8,my+uy*8); ctx.lineTo(mx-ux*7-uy*5,my-uy*7+ux*5); ctx.lineTo(mx-ux*7+uy*5,my-uy*7-ux*5); ctx.closePath(); ctx.fill(); ctx.restore();
-  }
-  const baseRender = render;
-  render = function() {
-    baseRender();
-    const colors = {follow:'#6f7d8c',left:'#ff9f1c',right:'#33b5e5',straight:'#55c271'};
-    navigation.edges.forEach((edge, index) => {
-      const from = stationById(edge.from), to = stationById(edge.to);
-      if (from && to) drawArrow(from, to, colors[maneuver(edge)] || '#d7263d', index === selectedEdge);
-    });
-    refreshNavigationControls();
-  };
-  const baseRename = renameSelected;
-  renameSelected = function() {
-    const oldId = selected >= 0 ? stations[selected].id : '';
-    baseRename();
-    const newId = selected >= 0 ? stations[selected].id : '';
-    if (oldId && newId && oldId !== newId) {
-      navigation.edges.forEach(edge => { if (edge.from === oldId) edge.from = newId; if (edge.to === oldId) edge.to = newId; });
-      if (navigation.default_start === oldId) navigation.default_start = newId;
-      render();
-    }
-  };
-  const baseRemove = removeSelected;
-  removeSelected = function() {
-    const removed = new Set([...selectedStations].map(index => stations[index]?.id));
-    baseRemove();
-    navigation.edges = navigation.edges.filter(edge => !removed.has(edge.from) && !removed.has(edge.to));
-    if (removed.has(navigation.default_start)) navigation.default_start = '';
-    selectedEdge = -1; render();
-  };
-  $('remove').onclick = removeSelected;
-  $('navStart').onchange = () => { navigation.default_start = $('navStart').value; render(); };
-  $('addEdge').onclick = () => {
-    const from = $('edgeFrom').value, to = $('edgeTo').value, direction = $('edgeManeuver').value;
-    if (!from || !to || from === to) return alert('Choose two different checkpoint QRs.');
-    if (navigation.edges.some(edge => edge.from === from && edge.to === to)) return alert('That directed edge already exists.');
-    const entered = Number($('edgeCost').value);
-    navigation.edges.push({id:makeEdgeId(), from, to, cost_m:Number.isFinite(entered) && entered > 0 ? entered : edgeDistance(from,to), maneuver:maneuverData(direction)});
-    selectedEdge = navigation.edges.length - 1; $('edgeCost').value = ''; render();
-  };
-  $('removeEdge').onclick = () => { if (selectedEdge < 0) return; navigation.edges.splice(selectedEdge,1); selectedEdge = -1; render(); };
-  $('validateGraph').onclick = () => { const issues = graphIssues(); navStatus(issues.length ? `Invalid: ${issues.join(' ')}` : `Valid graph: ${navigation.edges.length} directed edge(s).`); };
-  $('jsonInput').onchange = event => {
-    const file = event.target.files[0]; if (!file) return;
-    const reader = new FileReader(); reader.onload = () => { try {
-      const map = JSON.parse(reader.result); $('floorPath').value = map.floor_png || '';
-      $('width').value = map.floor_size_m?.[0] || 6; $('height').value = map.floor_size_m?.[1] || 6;
-      $('robotUri').value = map.robot?.model_uri || 'model://amr';
-      $('robotPose').value = (map.robot?.start_pose || [0,-2,.005,0,0,0]).join(' ');
-      stations = (map.checkpoints || []).map(station => ({...station,yaw:station.yaw || 0}));
-      normaliseNavigation(map.navigation); selected = -1; selectedStations.clear(); selectedRobot = false; selectedEdge = -1;
-      if (map.floor_png) image.src = '/' + map.floor_png; render();
-    } catch (_) { alert('Invalid map JSON.'); } }; reader.readAsText(file);
-  };
-  $('export').onclick = () => {
-    const pose = $('robotPose').value.trim().split(/\s+/).map(Number);
-    if (pose.length !== 6 || pose.some(Number.isNaN)) return alert('Robot pose needs six numbers.');
-    const issues = graphIssues(); if (issues.length) return alert(`Fix navigation graph first:\n${issues.join('\n')}`);
-    const data = {template:'sdf/track_with_robot.sdf', floor_png:$('floorPath').value.trim(), floor_size_m:[Number($('width').value),Number($('height').value)], robot:{model_uri:$('robotUri').value.trim(),start_pose:pose}, checkpoints:stations};
-    if (navigation.edges.length || navigation.default_start) data.navigation = navigation;
-    const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'}), link = document.createElement('a');
-    link.href = URL.createObjectURL(blob); link.download = 'my_map.json'; link.click(); URL.revokeObjectURL(link.href);
-  };
-  render();
-})();
-</script>
-
 </html>

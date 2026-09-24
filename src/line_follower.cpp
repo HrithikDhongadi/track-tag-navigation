@@ -1,4 +1,5 @@
 #include "amr/line_follower.hpp"
+#include "amr/junction_controller.hpp"
 #include "amr/runtime.hpp"
 #include "amr_line_follower/control.hpp"
 
@@ -48,7 +49,7 @@ int runLineFollower(const Options &options, std::atomic_bool &running) {
               const auto *pixel = pixels + y * stride + 3 * x;
               const double gray = .299 * pixel[0] + .587 * pixel[1] + .114 * pixel[2];
               sum += gray;
-              if (gray < options.threshold) ++dark;
+              if (gray < options.control.lineFollower.darkThreshold) ++dark;
             }
             reading.mean = sum / (width * height);
             reading.dark = dark / (width * height);
@@ -66,19 +67,42 @@ int runLineFollower(const Options &options, std::atomic_bool &running) {
   std::cout << (options.monitor ? "MONITOR: does not send movement commands.\n"
                                 : "DRIVE: stop on lost line/stale data; Ctrl+C sends stop.\n")
             << "Sensors L -> R: 0 1 2 3 4. Mean: 0=black, 255=white.\n";
+  const auto &lineConfig = options.control.lineFollower;
+  const auto &junctionConfig = options.control.junction;
+  std::cout << "CONTROL: " << (options.configPath.empty() ? "built-in defaults" : options.configPath)
+            << " line(speed=" << lineConfig.speedMps << ", kp=" << lineConfig.kp
+            << ", threshold=" << lineConfig.darkThreshold << ")"
+            << " junction(active=" << junctionConfig.minimumActiveSensors
+            << ", total_dark=" << junctionConfig.minimumTotalDark
+            << ", bias=L" << junctionConfig.leftBiasRadps
+            << "/R" << junctionConfig.rightBiasRadps
+            << ", commit=" << junctionConfig.commitDurationS << "s)" << std::endl;
+  if (options.junctionTurn != TurnRequest::None)
+    std::cout << "JUNCTION: fixed test turn enabled; it will commit only on a broad line pattern.\n";
   auto lastPrint = Clock::now() - std::chrono::seconds(1);
+  JunctionController junction(options.junctionTurn, options.control.junction);
+  auto previousLoop = Clock::now();
   while (isRunning(running)) {
     std::array<Reading, 5> snapshot;
     { std::lock_guard<std::mutex> guard(mutex); snapshot = readings; }
     const auto now = Clock::now();
+    const double seconds = std::min(0.10,
+        std::chrono::duration<double>(now - previousLoop).count());
+    previousLoop = now;
     bool fresh = true;
     std::array<double, 5> dark{};
     for (int i = 0; i < 5; ++i) {
       fresh = fresh && snapshot[i].valid &&
-          std::chrono::duration<double>(now - snapshot[i].received).count() < options.timeout;
+          std::chrono::duration<double>(now - snapshot[i].received).count() < options.control.lineFollower.cameraTimeoutS;
       dark[i] = snapshot[i].dark;
     }
-    const Command command = fresh ? steer(dark, options.speed, options.kp) : Command{};
+    Command command;
+    if (fresh)
+      command = junction.update(dark, steer(dark, options.control.lineFollower.speedMps, options.control.lineFollower.kp), options.control.lineFollower.speedMps, seconds);
+    else {
+      junction.reset();
+      command = {};
+    }
     if (!options.monitor) {
       ignition::msgs::Twist message;
       message.mutable_linear()->set_x(command.speed);
@@ -96,7 +120,10 @@ int runLineFollower(const Options &options, std::atomic_bool &running) {
       std::cout << "] dark=[";
       for (const auto &reading : snapshot)
         std::cout << std::setprecision(2) << reading.dark << ' ';
-      std::cout << "] v=" << command.speed << " w=" << command.turn << std::endl;
+      std::cout << "] v=" << command.speed << " w=" << command.turn;
+      if (options.junctionTurn != TurnRequest::None)
+        std::cout << " junction=" << junction.stateName();
+      std::cout << std::endl;
       lastPrint = now;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(33));

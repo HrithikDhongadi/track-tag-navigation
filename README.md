@@ -11,7 +11,7 @@ No ROS, SLAM, EKF, sensor fusion, or QR-based localization is used. QR codes are
 ## Features
 
 - Native Ignition Transport velocity control on `/amr/cmd_vel`
-- Five 16×16 line cameras at 15 FPS; one 640×480 QR camera at 5 FPS
+- Five 16×16 line cameras at 15 FPS; one 640×480 QR camera and one 320×240 forward camera at 5 FPS
 - One C++17 controller process: line following and QR reading run concurrently
 - 50 Hz physics, Ogre2, and disabled shadows for performance
 - Browser map editor with QR placement, robot start pose, pan/zoom, rotate, and QR copy/paste
@@ -64,6 +64,8 @@ For an initial QR visibility check:
 ```
 
 Use `Ctrl+C` in the launcher terminal to stop; it sends a zero velocity command. Omit `--view` for normal operation because the QR display window adds overhead.
+For the robot heading view, add `--front-view`. It may be combined with `--view`; both windows add display overhead, so omit them for headless or real-time-factor runs.
+For a junction-control test, use `--turn left`, `--turn right`, or `--turn straight`. Without `--turn`, the tested line controller remains unchanged.
 
 ### Launcher options
 
@@ -91,6 +93,7 @@ The default world is `sdf/track_with_qr.sdf`.
 - Physics: 50 Hz (`max_step_size = 0.02`)
 - Five line cameras: 15 FPS, 16×16 RGB
 - QR camera: 5 FPS, 640×480 RGB
+- Front heading camera: 5 FPS, 320×240 RGB
 - Line-controller loop: approximately 30 Hz; terminal logging: 2 Hz
 
 The controller stops when the line is lost or camera data is stale. It does not search for a line, stop at stations, route junctions, or estimate pose.
@@ -135,6 +138,15 @@ Editor controls:
 | Copy / paste QRs | Ctrl/Cmd + `C`, Ctrl/Cmd + `V` |
 | Rename a selected QR | Edit **Checkpoint ID**, press Enter |
 | Delete selected QR(s) | Delete |
+
+### Navigation graph
+
+QR checkpoints can also be edited as directed A* graph nodes. In the **Navigation graph** panel, choose a default start, then add each **From → To** edge with a cost and maneuver. Use `follow line` for ordinary segments and `turn left`, `turn right`, or `go straight` for an edge leaving a junction.
+
+The editor draws directional arrows over the map. Select an arrow in the edge list to highlight it; use **Validate navigation graph** before downloading. Renaming or removing a QR updates/removes its connected graph edges. The exported schema is `navigation.schema_version = 1`, with modular directed `edges`; it is ignored by SDF rendering but validated by `generate_map.py` for checkpoint references, costs, duplicate edges, and valid maneuvers.
+
+For a complete example, load `maps/junction_track.json`. Its 40 directed edges model the Track_v2 outer loop, centre spine, and both three-way junctions.
+
 
 Keep QR markers beside—not across—the line or beneath the line-sensor strip. Use `--view` for the first run of every new map.
 
@@ -185,6 +197,7 @@ Then set the map JSON or editor robot URI to `model://my_robot`.
 | `/amr/cmd_vel` | `ignition.msgs.Twist` | Velocity command |
 | `/amr/line_0/image` … `/amr/line_4/image` | `ignition.msgs.Image` | Line cameras |
 | `/amr/qr/image` | `ignition.msgs.Image` | QR camera |
+| `/amr/front/image` | `ignition.msgs.Image` | Forward heading camera |
 | `/amr/odometry` | Ignition odometry | Diff-drive odometry |
 | `/model/amr/tf` | Ignition transform | Model transform |
 
@@ -212,3 +225,16 @@ tools/     Browser map editor
   ign topic -t /amr/cmd_vel -m ignition.msgs.Twist \
     -p 'linear: {x: 0.0}, angular: {z: 0.0}'
   ```
+
+## Control profiles
+
+The controller has safe built-in defaults matching the tested baseline. For a map-specific tuning profile, copy [`configs/default.json`](configs/default.json), edit only the fields you want, and pass it to the launcher:
+
+```bash
+./build/track-tag-navigation --run --world sdf/junction_track.sdf \
+  --config configs/junction_track.json --turn left
+```
+
+The profile is loaded first; `--speed`, `--kp`, `--threshold`, and `--timeout` on the command line override it. The process prints the active profile and key settings at startup. `configs/junction_track.json` is an editable starting profile for the smooth-junction map.
+
+The `junction` section controls broad-junction detection, commit speed/bias/duration, and exit reacquisition. Keep a separate profile per map while tuning. Future QR routing will select `left`, `right`, or `straight`; it will reuse these same physical-turn settings and can add checkpoint-specific overrides without changing the line follower.

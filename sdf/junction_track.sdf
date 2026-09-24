@@ -1,0 +1,507 @@
+<?xml version='1.0' encoding='utf-8'?>
+<sdf version="1.8">
+  <world name="track_world">
+    <physics name="physics" type="ignored">
+      <max_step_size>0.02</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+    <plugin filename="libignition-gazebo-physics-system.so" name="ignition::gazebo::systems::Physics" />
+    <plugin filename="libignition-gazebo-user-commands-system.so" name="ignition::gazebo::systems::UserCommands" />
+    <plugin filename="libignition-gazebo-scene-broadcaster-system.so" name="ignition::gazebo::systems::SceneBroadcaster" />
+    <scene>
+      <ambient>0.8 0.8 0.8 1</ambient>
+      <background>0.6 0.7 0.8 1</background>
+      <shadows>false</shadows>
+    </scene>
+    <light name="sun" type="directional">
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.1 0.1 0.1 1</specular>
+      <direction>0 0 -1</direction>
+      <cast_shadows>false</cast_shadows>
+    </light>
+    <model name="track_floor">
+      <static>true</static>
+      <link name="floor_link">
+        <collision name="floor_collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>6.0 6.0</size>
+            </plane>
+          </geometry>
+        </collision>
+        <visual name="floor_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>6.0 6.0</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/track/Track_v2.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <plugin name="ignition::gazebo::systems::Sensors" filename="libignition-gazebo-sensors-system.so">
+      <render_engine>ogre2</render_engine>
+    </plugin>
+    <include>
+      <uri>model://amr</uri>
+      <name>amr</name>
+      <pose>2.015 0.0 0.005 0.0 0.0 1.5708</pose>
+    </include>
+    <model name="qr_turn_1_entry">
+      <static>true</static>
+      <pose>1.915 1.45 0.001 0 0 0.0</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Turn 1 Entry.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_turn_1_exit">
+      <static>true</static>
+      <pose>1.45 1.915 0.001 0 0 1.5707963267948963</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Turn 1 Exit.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_turn_2_entry">
+      <static>true</static>
+      <pose>-1.45 1.915 0.001 0 0 1.5707963267948966</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Turn 2 Entry.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_turn_2_exit">
+      <static>true</static>
+      <pose>-1.915 1.45 0.001 0 0 3.1415926535897936</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Turn 2 Exit.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_turn_3_entry">
+      <static>true</static>
+      <pose>-1.915 -1.45 0.001 0 0 3.1415926535897936</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Turn 3 Entry.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_turn_3_exit">
+      <static>true</static>
+      <pose>-1.45 -1.915 0.001 0 0 4.71238898038469</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Turn 3 Exit.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_turn_4_entry">
+      <static>true</static>
+      <pose>1.45 -1.915 0.001 0 0 4.71238898038469</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Turn 4 Entry.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_turn_4_exit">
+      <static>true</static>
+      <pose>1.915 -1.45 0.001 0 0 0.0</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Turn 4 Exit.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_station_a">
+      <static>true</static>
+      <pose>1.915 0.0 0.001 0 0 0.0</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Station A.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_j1a">
+      <static>true</static>
+      <pose>0.45 1.915 0.001 0 0 1.5707963267948963</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/J1A.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_station_c">
+      <static>true</static>
+      <pose>-1.915 0.0 0.001 0 0 3.1415926535897936</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Station C.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_j2c">
+      <static>true</static>
+      <pose>0.45 -1.915 0.001 0 0 4.71238898038469</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/J2C.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_j1b">
+      <static>true</static>
+      <pose>0.115 1.45 0.001 0 0 1.5707963267948963</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/J1B.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_j1c">
+      <static>true</static>
+      <pose>-0.45 1.915 0.001 0 0 1.5707963267948963</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/J1C.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_j2b">
+      <static>true</static>
+      <pose>0.115 -1.45 0.001 0 0 4.71238898038469</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/J2B.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_j2a">
+      <static>true</static>
+      <pose>-0.45 -1.915 0.001 0 0 4.71238898038469</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/J2A.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+    <model name="qr_station_b">
+      <static>true</static>
+      <pose>0.115 0.0 0.001 0 0 4.71238898038469</pose>
+      <link name="marker">
+        <visual name="qr_visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>0.05 0.05</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>1 1 1 1</ambient>
+            <diffuse>1 1 1 1</diffuse>
+            <specular>0 0 0 1</specular>
+            <pbr>
+              <metal>
+                <albedo_map>../assets/checkpoints/junction_track/Station B.png</albedo_map>
+                <metalness>0</metalness>
+                <roughness>1</roughness>
+              </metal>
+            </pbr>
+          </material>
+        </visual>
+      </link>
+    </model>
+  </world>
+</sdf>
