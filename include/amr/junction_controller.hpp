@@ -44,7 +44,14 @@ class JunctionController {
     elapsed_ = 0.0;
     stable_ = 0.0;
     cooldown_ = 0.0;
+    completed_ = false;
   }
+
+  void setRequest(TurnRequest request) {
+    if (state_ == State::Follow) { request_ = request; oneShot_ = true; }
+  }
+
+  bool takeCompleted() { const bool completed = completed_; completed_ = false; return completed; }
 
   const char *stateName() const {
     switch (state_) {
@@ -59,6 +66,7 @@ class JunctionController {
   enum class State { Follow, Commit, Reacquire };
 
   bool isJunction(const std::array<double, 5> &dark) {
+  
     int active = 0;
     double totalDark = 0.0;
     for (const double value : dark) {
@@ -102,6 +110,8 @@ class JunctionController {
       if (stable_ >= config_.reacquireStableS) {
         state_ = State::Follow;
         cooldown_ = config_.cooldownS;
+        completed_ = request_ != TurnRequest::None;
+        if (oneShot_) { request_ = TurnRequest::None; oneShot_ = false; }
         stable_ = 0.0;
       }
       return command;
@@ -116,6 +126,8 @@ class JunctionController {
   double elapsed_ = 0.0;
   double stable_ = 0.0;
   double cooldown_ = 0.0;
+  bool oneShot_ = false;
+  bool completed_ = false;
 };
 
 }  // namespace amr

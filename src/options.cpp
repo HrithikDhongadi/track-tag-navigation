@@ -8,7 +8,7 @@ namespace amr {
 namespace {
 
 void printUsage() {
-  std::cout << "track_tag_navigation_controller [--config path.json] [--view] [--front-view] "
+  std::cout << "track_tag_navigation_controller [--config path.json] [--map map.json --goal checkpoint] [--mission mission.json] [--robot id] [--start checkpoint] [--view] [--front-view] "
                "[--turn left|right|straight|none] [--monitor] [--speed 0.10] [--kp 0.45] "
                "[--threshold 110] [--timeout 2.0]\n";
 }
@@ -25,6 +25,11 @@ bool parseOptions(int argc, char **argv, Options &options) {
         printUsage();
         return false;
       }
+      if (arg == "--map") { if (++i >= argc) throw std::runtime_error("Missing value for --map"); options.mapPath = argv[i]; continue; }
+      if (arg == "--goal") { if (++i >= argc) throw std::runtime_error("Missing value for --goal"); options.goal = argv[i]; continue; }
+      if (arg == "--start") { if (++i >= argc) throw std::runtime_error("Missing value for --start"); options.start = argv[i]; continue; }
+      if (arg == "--mission") { if (++i >= argc) throw std::runtime_error("Missing value for --mission"); options.missionPath = argv[i]; continue; }
+      if (arg == "--robot") { if (++i >= argc) throw std::runtime_error("Missing value for --robot"); options.robotId = argv[i]; continue; }
       if (arg == "--config") {
         if (++i >= argc) throw std::runtime_error("Missing value for --config");
         options.configPath = argv[i];
@@ -41,6 +46,11 @@ bool parseOptions(int argc, char **argv, Options &options) {
       if (arg == "--monitor") { options.monitor = true; continue; }
       if (arg == "--view") { options.view = true; continue; }
       if (arg == "--front-view") { options.frontView = true; continue; }
+      if (arg == "--map") { if (++i >= argc) throw std::runtime_error("Missing value for --map"); options.mapPath = argv[i]; continue; }
+      if (arg == "--goal") { if (++i >= argc) throw std::runtime_error("Missing value for --goal"); options.goal = argv[i]; continue; }
+      if (arg == "--start") { if (++i >= argc) throw std::runtime_error("Missing value for --start"); options.start = argv[i]; continue; }
+      if (arg == "--mission") { if (++i >= argc) throw std::runtime_error("Missing value for --mission"); options.missionPath = argv[i]; continue; }
+      if (arg == "--robot") { if (++i >= argc) throw std::runtime_error("Missing value for --robot"); options.robotId = argv[i]; continue; }
       if (arg == "--config") { ++i; continue; }
       if (arg == "--turn") {
         if (++i >= argc) throw std::runtime_error("Missing value for --turn");
@@ -66,6 +76,15 @@ bool parseOptions(int argc, char **argv, Options &options) {
       else throw std::runtime_error("Unknown option: " + arg);
     }
     std::string error;
+    if (!options.missionPath.empty() && options.mapPath.empty())
+      throw std::runtime_error("--mission requires --map.");
+    if (!options.missionPath.empty() && !options.goal.empty())
+      throw std::runtime_error("Use either --mission or --goal, not both.");
+    if (options.robotId.empty()) throw std::runtime_error("--robot cannot be empty.");
+    if (!options.goal.empty() && options.mapPath.empty())
+      throw std::runtime_error("Use --map and --goal together for A* routing.");
+    if ((!options.mapPath.empty() || !options.missionPath.empty()) && options.junctionTurn != TurnRequest::None)
+      throw std::runtime_error("Use either A* routing or --turn, not both.");
     if (!validateControlConfig(options.control, error)) throw std::runtime_error(error);
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

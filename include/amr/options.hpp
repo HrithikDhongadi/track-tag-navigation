@@ -10,6 +10,11 @@ namespace amr {
 struct Options {
   ControlConfig control;
   std::string configPath;
+  std::string mapPath;
+  std::string goal;
+  std::string start;
+  std::string missionPath;
+  std::string robotId = "amr_1";
   TurnRequest junctionTurn = TurnRequest::None;
   bool monitor = false;
   bool view = false;

@@ -1,7 +1,10 @@
 #include "amr/qr_reader.hpp"
 #include "amr/runtime.hpp"
+#include "amr/mission_executor.hpp"
+#include "amr/route_manager.hpp"
 
 #include <ignition/msgs/image.pb.h>
+#include <ignition/msgs/stringmsg.pb.h>
 #include <ignition/transport/Node.hh>
 #include <opencv2/core.hpp>
 #include <opencv2/highgui.hpp>
@@ -21,7 +24,8 @@ namespace {
 using Clock = std::chrono::steady_clock;
 }  // namespace
 
-int runQrReader(bool view, bool frontView, std::atomic_bool &running) {
+int runQrReader(bool view, bool frontView, std::atomic_bool &running,
+                std::shared_ptr<RouteManager> routes, std::shared_ptr<MissionExecutor> mission) {
   cv::setNumThreads(1);
   std::mutex mutex;
   cv::Mat latest;
@@ -30,6 +34,7 @@ int runQrReader(bool view, bool frontView, std::atomic_bool &running) {
   unsigned long frontSequence = 0, frontConsumed = 0;
   Clock::time_point received = Clock::now();
   ignition::transport::Node node;
+  auto checkpointPublisher = node.Advertise<ignition::msgs::StringMsg>("/amr/checkpoint");
   std::function<void(const ignition::msgs::Image &)> callback =
       [&](const ignition::msgs::Image &message) {
         const size_t width = message.width(), height = message.height(), stride = message.step();
@@ -105,6 +110,9 @@ int runQrReader(bool view, bool frontView, std::atomic_bool &running) {
           std::cout << "Location: " << id << std::endl;
         lastSeen[id] = now;
         lastLocation = id;
+        if (routes) routes->onCheckpoint(id);
+        if (mission) mission->onCheckpoint(id);
+        if (checkpointPublisher) { ignition::msgs::StringMsg event; event.set_data(id); checkpointPublisher.Publish(event); }
       }
       image.set_data(nullptr, 0);
       if (view) {

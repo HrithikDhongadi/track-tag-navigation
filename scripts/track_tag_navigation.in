@@ -9,15 +9,22 @@ controller_args=()
 gazebo_args=(--render-engine ogre2)
 auto_run=false
 headless=false
+ui=false
 config_path=""
 
 usage() {
   cat <<EOF
-Usage: $0 [--run] [--view] [--front-view] [--turn left|right|straight] [--config configs/my_profile.json] [--headless] [--world sdf/my_map.sdf]
+Usage: $0 [--run] [--view] [--front-view] [--ui] [--map maps/my_map.json [--goal checkpoint]] [--mission missions/my_mission.json] [--robot amr_1] [--start checkpoint] [--turn left|right|straight] [--config configs/my_profile.json] [--headless] [--world sdf/my_map.sdf]
 
   --run       start physics immediately (otherwise press Play in Fortress)
   --view      show the QR camera window (adds display overhead)
   --front-view show the forward heading camera window (adds display overhead)
+  --ui        open the TrackTag dashboard console (mission, cameras, diagnostics)
+  --map       navigation graph map JSON; use alone to create a mission in the UI
+  --goal      checkpoint ID to reach using A*
+  --mission   ordered navigate-task JSON; starts only from the Mission UI
+  --robot     logical robot ID for mission status (default: amr_1)
+  --start     optional starting checkpoint (defaults to map navigation start)
   --turn       test one selected junction exit: left, right, or straight
   --config     load an editable version-1 control JSON profile
   --headless  run server-only with off-screen camera rendering; use this to
@@ -31,6 +38,14 @@ while [[ $# -gt 0 ]]; do
     --run) auto_run=true ;;
     --view) controller_args+=(--view) ;;
     --front-view) controller_args+=(--front-view) ;;
+    --ui) ui=true ;;
+    --map|--goal|--start|--mission|--robot)
+      flag="$1"; shift
+      [[ $# -gt 0 ]] || { echo "$flag requires a value" >&2; exit 2; }
+      value="$1"
+      if [[ ( "$flag" == "--map" || "$flag" == "--mission" ) && "$value" != /* ]]; then value="$project_root/$value"; fi
+      controller_args+=("$flag" "$value")
+      ;;
     --config)
       shift
       [[ $# -gt 0 ]] || { echo "--config requires a JSON file" >&2; exit 2; }
@@ -67,6 +82,11 @@ if [[ ! -f "$world" ]]; then
   exit 1
 fi
 
+if [[ "$ui" == true && ! -x "$build_dir/track_tag_navigation_ui" ]]; then
+  echo "Missing UI viewer. Rebuild with ImGui available: cmake --build $build_dir -j2" >&2
+  exit 1
+fi
+
 if [[ ! -x "$build_dir/track_tag_navigation_controller" ]]; then
   echo "Missing controller. Build with: cmake --build $build_dir -j2" >&2
   exit 1
@@ -79,10 +99,17 @@ cleanup() {
   ign topic -t /amr/cmd_vel -m ignition.msgs.Twist \
     -p 'linear: {x: 0.0}, angular: {z: 0.0}' >/dev/null 2>&1 || true
   kill "${controller_pid:-}" 2>/dev/null || true
+  kill "${ui_pid:-}" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
+if [[ "$ui" == true && ! -x "$build_dir/track_tag_navigation_ui" ]]; then
+  echo "Missing UI viewer. Rebuild with ImGui available: cmake --build $build_dir -j2" >&2
+  exit 1
+fi
+
 "$build_dir/track_tag_navigation_controller" "${controller_args[@]}" & controller_pid=$!
+if [[ "$ui" == true ]]; then "$build_dir/track_tag_navigation_ui" & ui_pid=$!; fi
 
 if [[ "$auto_run" == true ]]; then gazebo_args+=(-r); fi
 if [[ "$headless" == true ]]; then gazebo_args+=(-s --headless-rendering); fi

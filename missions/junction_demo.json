@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "auto_advance": false,
+  "tasks": [
+    { "id": "task_01", "type": "navigate", "to": "Station B" },
+    { "id": "task_02", "type": "navigate", "to": "Station C" },
+    { "id": "task_03", "type": "navigate", "to": "Station B" }
+  ]
+}

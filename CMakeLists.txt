@@ -22,6 +22,9 @@ add_executable(track_tag_navigation_controller
   src/main.cpp
   src/options.cpp
   src/control_config.cpp
+  src/navigation.cpp
+  src/route_manager.cpp
+  src/mission_executor.cpp
   src/runtime.cpp
   src/line_follower.cpp
   src/qr_reader.cpp)
@@ -33,3 +36,35 @@ target_link_libraries(track_tag_navigation_controller PRIVATE
   PkgConfig::ZBAR
   Threads::Threads)
 target_compile_options(track_tag_navigation_controller PRIVATE -Wall -Wextra -Wpedantic)
+
+set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/third_party/imgui" CACHE PATH
+    "Path to a Dear ImGui source checkout")
+if(NOT EXISTS "${IMGUI_DIR}/imgui.cpp" AND EXISTS "$ENV{HOME}/Downloads/imgui/imgui.cpp")
+  set(IMGUI_DIR "$ENV{HOME}/Downloads/imgui")
+endif()
+if(EXISTS "${IMGUI_DIR}/imgui.cpp")
+  find_package(OpenGL REQUIRED)
+  pkg_check_modules(GLFW REQUIRED IMPORTED_TARGET glfw3)
+  add_executable(track_tag_navigation_ui
+    src/ui/telemetry_viewer.cpp
+    src/ui/dashboard.cpp
+    src/ui/telemetry_store.cpp
+    src/ui/theme.cpp
+    src/ui/widgets.cpp
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_glfw.cpp
+    ${IMGUI_DIR}/backends/imgui_impl_opengl3.cpp)
+  target_include_directories(track_tag_navigation_ui PRIVATE include ${IMGUI_DIR} ${IMGUI_DIR}/backends)
+  target_link_libraries(track_tag_navigation_ui PRIVATE
+    ignition-transport11::core
+    ignition-msgs8::ignition-msgs8
+    PkgConfig::GLFW
+    OpenGL::GL
+    Threads::Threads)
+  target_compile_options(track_tag_navigation_ui PRIVATE -Wall -Wextra -Wpedantic)
+else()
+  message(STATUS "track_tag_navigation_ui disabled: set IMGUI_DIR to a Dear ImGui checkout")
+endif()
