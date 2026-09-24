@@ -21,7 +21,7 @@ Usage: $0 [--run] [--view] [--front-view] [--ui] [--map maps/my_map.json [--goal
   --front-view show the forward heading camera window (adds display overhead)
   --ui        open the TrackTag dashboard console (mission, cameras, diagnostics)
   --map       navigation graph map JSON; use alone to create a mission in the UI
-  --goal      checkpoint ID to reach using A*
+  --goal      checkpoint ID to reach using cost-based graph routing
   --mission   ordered navigate-task JSON; starts only from the Mission UI
   --robot     logical robot ID for mission status (default: amr_1)
   --start     optional starting checkpoint (defaults to map navigation start)

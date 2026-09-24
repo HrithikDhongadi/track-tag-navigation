@@ -82,9 +82,9 @@ bool parseOptions(int argc, char **argv, Options &options) {
       throw std::runtime_error("Use either --mission or --goal, not both.");
     if (options.robotId.empty()) throw std::runtime_error("--robot cannot be empty.");
     if (!options.goal.empty() && options.mapPath.empty())
-      throw std::runtime_error("Use --map and --goal together for A* routing.");
+      throw std::runtime_error("Use --map and --goal together for cost-based routing.");
     if ((!options.mapPath.empty() || !options.missionPath.empty()) && options.junctionTurn != TurnRequest::None)
-      throw std::runtime_error("Use either A* routing or --turn, not both.");
+      throw std::runtime_error("Use either cost-based routing or --turn, not both.");
     if (!validateControlConfig(options.control, error)) throw std::runtime_error(error);
   } catch (const std::exception &error) {
     std::cerr << error.what() << '\n';

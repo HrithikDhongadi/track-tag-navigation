@@ -1,8 +1,10 @@
-# TrackTag Navigation — Ignition Fortress AMR line following and QR checkpoints
+# TrackTag Navigation — line-following AMR with QR checkpoints
 
-A lightweight AMR simulation for **Ignition Gazebo Fortress**. The robot follows a black floor line using five downward-facing RGB cameras and reads checkpoint IDs through a separate QR camera.
+TrackTag Navigation is a complete **Ignition Gazebo Fortress** simulation of a small autonomous mobile robot (AMR) that follows a black floor line, reads QR checkpoint markers, and can travel between named stations on a configured track.
 
-No ROS, SLAM, EKF, sensor fusion, or QR-based localization is used. QR codes are visual-only checkpoint identifiers.
+Use it to build a track visually, place QR checkpoints beside the line, generate a runnable Gazebo world, then send the robot to a destination or through a mission queue. The robot follows the line from five downward-facing cameras; QR codes tell the controller which checkpoint it has just passed, allowing it to update its route and choose a configured exit at a junction.
+
+This is intentionally a lightweight, track-based navigation system—not a general-purpose robot autonomy stack. It uses no ROS, SLAM, EKF, sensor fusion, obstacle avoidance, or QR-based localization. A QR is a visual checkpoint event, not a pose estimate.
 
 ![TrackTag Navigation running in Ignition Fortress](assets/media/TrackTagSim.png)
 
@@ -10,13 +12,14 @@ No ROS, SLAM, EKF, sensor fusion, or QR-based localization is used. QR codes are
 
 ## Features
 
-- Native Ignition Transport velocity control on `/amr/cmd_vel`
-- Five 16×16 line cameras at 15 FPS; one 640×480 QR camera and one 1920×1080 forward camera at 5 FPS
-- One C++17 controller process: line following and QR reading run concurrently
-- 50 Hz physics, Ogre2, and disabled shadows for performance
-- Browser map editor with QR placement, robot start pose, pan/zoom, rotate, and QR copy/paste
-- JSON-to-SDF generation for new worlds without changing the baseline world
-- Directed A* checkpoint routing, controller-owned mission queues, and an optional native dashboard
+- **Closed-loop line following:** five floor cameras drive a native Ignition Transport controller on `/amr/cmd_vel`. It slows for larger tracking errors and safely stops when camera data is stale or the line is lost.
+- **QR checkpoint events:** a dedicated QR camera reads station and track IDs without putting markers over the line. Checkpoints update the active route; they are not used for localization.
+- **Directed track routing:** choose a named goal or run an ordered mission. The controller finds the lowest-cost route through the map graph and uses configured left, right, or straight junction maneuvers.
+- **Map-to-world workflow:** use the local browser editor to place QR markers, set the robot start pose, and edit graph edges; generate QR textures and a new SDF world from the exported JSON.
+- **Native dashboard:** optionally view front and QR cameras, mission state, controller/transport diagnostics, and send explicit mission commands from a GLFW/Dear ImGui console.
+- **Modular and performant simulation:** 50 Hz Fortress physics, Ogre2 with shadows disabled, reusable robot models, and headless operation for real-time-factor testing.
+
+The default world uses five 16×16 line cameras at 15 Hz, a 640×480 QR camera at 5 Hz, and a 320×240 forward camera at 5 Hz. The modular robot used by generated worlds raises the forward camera to 1920×1080.
 
 ## Requirements
 
@@ -96,7 +99,7 @@ The default world is `sdf/track_with_qr.sdf`.
 - Physics: 50 Hz (`max_step_size = 0.02`)
 - Five line cameras: 15 FPS, 16×16 RGB
 - QR camera: 5 FPS, 640×480 RGB
-- Front heading camera: 5 FPS, 1920×1080 RGB
+- Front heading camera: 5 FPS, 320×240 RGB
 - Line-controller loop: approximately 30 Hz; terminal logging: 2 Hz
 
 The controller stops when the line is lost or camera data is stale. It does not search for a line or estimate pose. When a map route or mission is active, confirmed QR checkpoints drive route progress and station arrival behavior.
@@ -172,7 +175,7 @@ To regenerate the same output after editing JSON:
 python3 scripts/generate_map.py maps/my_map.json --output sdf/my_map.sdf --force
 ```
 
-`--force` replaces only that generated world and its QR textures. The baseline `sdf/track_with_qr.sdf` remains unchanged.
+`--force` replaces only that generated world and overwrites QR textures for its current checkpoints. It does not remove PNGs left by checkpoints removed from a prior version of the same map. The baseline `sdf/track_with_qr.sdf` remains unchanged.
 
 ## Modular robot models
 
@@ -191,7 +194,7 @@ The supplied model package is `models/amr/`. To export an `amr` model from anoth
 python3 scripts/export_robot_model.py path/to/robot_world.sdf --output models/my_robot
 ```
 
-Then set the map JSON or editor robot URI to `model://my_robot`.
+Then set the map JSON or editor robot URI to `model://my_robot`. The supplied modular `amr` model has a 1920×1080 forward camera; this differs from the 320×240 camera in the inline robot of the default baseline world.
 
 ## Native topics
 
@@ -205,8 +208,7 @@ Then set the map JSON or editor robot URI to `model://my_robot`.
 | `/amr/checkpoint` | `ignition.msgs.StringMsg` | Decoded checkpoint ID |
 | `/mission/command` | `ignition.msgs.StringMsg` | Explicit mission command |
 | `/mission/status` | `ignition.msgs.StringMsg` | Controller-owned mission state |
-| `/amr/odometry` | Ignition odometry | Diff-drive odometry |
-| `/model/amr/tf` | Ignition transform | Model transform |
+| `/amr/odometry` | Ignition odometry | Diff-drive odometry (published by the model plugin; not consumed by this controller) |
 
 ## Layout
 
@@ -236,7 +238,7 @@ tools/     Browser map editor
 
 ## Control profiles
 
-The controller has safe built-in defaults matching the tested baseline. For a map-specific tuning profile, copy [`configs/default.json`](configs/default.json), edit only the fields you want, and pass it to the launcher:
+The controller has conservative built-in defaults for the supplied baseline. Validate gains and thresholds in your own Fortress environment and for each map. For a map-specific tuning profile, copy [`configs/default.json`](configs/default.json), edit only the fields you want, and pass it to the launcher:
 
 ```bash
 ./build/track-tag-navigation --run --world sdf/junction_track.sdf \
@@ -245,12 +247,12 @@ The controller has safe built-in defaults matching the tested baseline. For a ma
 
 The profile is loaded first; `--speed`, `--kp`, `--threshold`, and `--timeout` on the command line override it. The process prints the active profile and key settings at startup. `configs/junction_track.json` is an editable starting profile for the smooth-junction map.
 
-The `junction` section controls broad-junction detection, commit speed/bias/duration, and exit reacquisition. Keep a separate profile per map while tuning. A* routing uses these same physical-turn settings when it arms a `junction_turn` edge.
+The `junction` section controls broad-junction detection, commit speed/bias/duration, and exit reacquisition. Keep a separate profile per map while tuning. Cost-based routing uses these same physical-turn settings when it arms a `junction_turn` edge.
 
 
-## A* checkpoint routing
+## Cost-based checkpoint routing
 
-A map `navigation` object defines directed QR-to-QR edges. Each edge has `cost_m` and a maneuver: `follow` or `junction_turn` with `left`, `right`, or `straight`. The supplied `maps/junction_track.json` is a complete example.
+A map `navigation` object defines directed QR-to-QR edges. Each edge has `cost_m` and a maneuver: `follow` or `junction_turn` with `left`, `right`, or `straight`. The controller uses Dijkstra's uniform-cost shortest-path search; despite older wording in this project, it does not currently use an A* heuristic. The supplied `maps/junction_track.json` is a complete example.
 
 Run a single goal-directed route:
 
@@ -268,7 +270,7 @@ __GLX_VENDOR_LIBRARY_NAME=nvidia \
 
 ## Dashboard
 
-Add `--ui` to open the TrackTag console. It has four pages: **Mission**, **Cameras**, **Diagnostics**, and **Settings**. It subscribes to native transport data and only publishes an explicit mission command or the one-shot top-bar **Send stop** command.
+Add `--ui` to open the TrackTag console. It has four pages: **Mission**, **Cameras**, **Diagnostics**, and **Settings**. It subscribes to native transport data and only publishes an explicit mission command or the one-shot top-bar **Send stop** command. **Send stop** is not a persistent emergency stop: an active controller can publish a later driving command. Use mission pause/stop, stop the controller, or otherwise disable its motion for a persistent stop.
 
 The Mission page is a live workspace: drag the centre divider to resize mission control versus cameras, drag the camera divider to resize the front and QR views, and use either fullscreen button for a focused camera view.
 
