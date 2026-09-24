@@ -75,8 +75,8 @@ For a junction-control test, use `--turn left`, `--turn right`, or `--turn strai
 ./build/track-tag-navigation --run
 ./build/track-tag-navigation --headless
 ./build/track-tag-navigation --run --world sdf/my_map.sdf
-./build/track-tag-navigation --run --ui --map maps/junction_track.json --goal "Station B"
-./build/track-tag-navigation --headless --ui --map maps/junction_track.json --robot amr_1
+./build/track-tag-navigation --run --ui --world sdf/junction_track.sdf --map maps/junction_track.json --goal "Station B"
+./build/track-tag-navigation --run --ui   --world sdf/junction_track.sdf   --map maps/junction_track.json   --config configs/junction_track.json   --robot amr_1
 ```
 
 `--headless` implies `--run`, retains off-screen camera sensors, and removes the Fortress GUI. It is useful for real-time-factor tests and the desktop dashboard can still run with `--ui`.
