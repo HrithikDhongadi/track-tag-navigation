@@ -11,11 +11,12 @@ No ROS, SLAM, EKF, sensor fusion, or QR-based localization is used. QR codes are
 ## Features
 
 - Native Ignition Transport velocity control on `/amr/cmd_vel`
-- Five 16×16 line cameras at 15 FPS; one 640×480 QR camera and one 320×240 forward camera at 5 FPS
+- Five 16×16 line cameras at 15 FPS; one 640×480 QR camera and one 1920×1080 forward camera at 5 FPS
 - One C++17 controller process: line following and QR reading run concurrently
 - 50 Hz physics, Ogre2, and disabled shadows for performance
 - Browser map editor with QR placement, robot start pose, pan/zoom, rotate, and QR copy/paste
 - JSON-to-SDF generation for new worlds without changing the baseline world
+- Directed A* checkpoint routing, controller-owned mission queues, and an optional native dashboard
 
 ## Requirements
 
@@ -27,6 +28,7 @@ sudo apt install build-essential cmake pkg-config \
   libignition-transport11-dev libignition-msgs8-dev \
   libopencv-dev libzbar-dev python3-qrcode python3-pil
 ```
+For the optional dashboard, also install `libglfw3-dev` and provide Dear ImGui in `third_party/imgui`, `~/Downloads/imgui`, or through `-DIMGUI_DIR=/path/to/imgui` when configuring.
 
 For NVIDIA GPU rendering, confirm the driver is active:
 
@@ -43,7 +45,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j2
 ```
 
-`build/track_tag_navigation_controller` is the single C++ executable. `build/track-tag-navigation` launches it together with Fortress.
+`build/track-tag-navigation` is the supported launcher. It starts Fortress and the native controller; with `--ui`, it also starts the optional dashboard executable.
 
 ## Run the included world
 
@@ -67,16 +69,17 @@ Use `Ctrl+C` in the launcher terminal to stop; it sends a zero velocity command.
 For the robot heading view, add `--front-view`. It may be combined with `--view`; both windows add display overhead, so omit them for headless or real-time-factor runs.
 For a junction-control test, use `--turn left`, `--turn right`, or `--turn straight`. Without `--turn`, the tested line controller remains unchanged.
 
-### Launcher options
+### Common launch modes
 
 ```text
 ./build/track-tag-navigation --run
-./build/track-tag-navigation --view
 ./build/track-tag-navigation --headless
 ./build/track-tag-navigation --run --world sdf/my_map.sdf
+./build/track-tag-navigation --run --ui --map maps/junction_track.json --goal "Station B"
+./build/track-tag-navigation --headless --ui --map maps/junction_track.json --robot amr_1
 ```
 
-`--headless` retains off-screen camera sensors but removes the Fortress GUI, making it useful for real-time-factor tests.
+`--headless` implies `--run`, retains off-screen camera sensors, and removes the Fortress GUI. It is useful for real-time-factor tests and the desktop dashboard can still run with `--ui`.
 
 On hybrid NVIDIA systems, force the discrete GPU if needed:
 
@@ -93,10 +96,10 @@ The default world is `sdf/track_with_qr.sdf`.
 - Physics: 50 Hz (`max_step_size = 0.02`)
 - Five line cameras: 15 FPS, 16×16 RGB
 - QR camera: 5 FPS, 640×480 RGB
-- Front heading camera: 5 FPS, 320×240 RGB
+- Front heading camera: 5 FPS, 1920×1080 RGB
 - Line-controller loop: approximately 30 Hz; terminal logging: 2 Hz
 
-The controller stops when the line is lost or camera data is stale. It does not search for a line, stop at stations, route junctions, or estimate pose.
+The controller stops when the line is lost or camera data is stale. It does not search for a line or estimate pose. When a map route or mission is active, confirmed QR checkpoints drive route progress and station arrival behavior.
 
 ## Create a custom map
 
@@ -190,7 +193,7 @@ python3 scripts/export_robot_model.py path/to/robot_world.sdf --output models/my
 
 Then set the map JSON or editor robot URI to `model://my_robot`.
 
-## Topics
+## Native topics
 
 | Topic | Message type | Purpose |
 |---|---|---|
@@ -198,6 +201,10 @@ Then set the map JSON or editor robot URI to `model://my_robot`.
 | `/amr/line_0/image` … `/amr/line_4/image` | `ignition.msgs.Image` | Line cameras |
 | `/amr/qr/image` | `ignition.msgs.Image` | QR camera |
 | `/amr/front/image` | `ignition.msgs.Image` | Forward heading camera |
+| `/amr/telemetry` | `ignition.msgs.StringMsg` | Controller and route status |
+| `/amr/checkpoint` | `ignition.msgs.StringMsg` | Decoded checkpoint ID |
+| `/mission/command` | `ignition.msgs.StringMsg` | Explicit mission command |
+| `/mission/status` | `ignition.msgs.StringMsg` | Controller-owned mission state |
 | `/amr/odometry` | Ignition odometry | Diff-drive odometry |
 | `/model/amr/tf` | Ignition transform | Model transform |
 
@@ -211,6 +218,7 @@ maps/      Editable map JSON files
 models/    Reusable SDF model packages
 sdf/       Baseline and generated worlds
 scripts/   Launch, map, and model utilities
+missions/  Reusable ordered mission JSON files
 src/       C++ controller modules
 tools/     Browser map editor
 ```
@@ -237,13 +245,14 @@ The controller has safe built-in defaults matching the tested baseline. For a ma
 
 The profile is loaded first; `--speed`, `--kp`, `--threshold`, and `--timeout` on the command line override it. The process prints the active profile and key settings at startup. `configs/junction_track.json` is an editable starting profile for the smooth-junction map.
 
-The `junction` section controls broad-junction detection, commit speed/bias/duration, and exit reacquisition. Keep a separate profile per map while tuning. Future QR routing will select `left`, `right`, or `straight`; it will reuse these same physical-turn settings and can add checkpoint-specific overrides without changing the line follower.
+The `junction` section controls broad-junction detection, commit speed/bias/duration, and exit reacquisition. Keep a separate profile per map while tuning. A* routing uses these same physical-turn settings when it arms a `junction_turn` edge.
 
-## A* checkpoint routing and telemetry UI
 
-A map may contain an optional `navigation` object with directed QR-to-QR edges. Each edge has an explicit `cost_m` and a modular maneuver: `follow` or `junction_turn` with `left`, `right`, or `straight`. The supplied `maps/junction_track.json` contains the complete Track_v2 graph.
+## A* checkpoint routing
 
-Run a goal-directed route with the tabbed telemetry UI:
+A map `navigation` object defines directed QR-to-QR edges. Each edge has `cost_m` and a maneuver: `follow` or `junction_turn` with `left`, `right`, or `straight`. The supplied `maps/junction_track.json` is a complete example.
+
+Run a single goal-directed route:
 
 ```bash
 __NV_PRIME_RENDER_OFFLOAD=1 \
@@ -252,34 +261,29 @@ __GLX_VENDOR_LIBRARY_NAME=nvidia \
   --world sdf/junction_track.sdf \
   --map maps/junction_track.json \
   --config configs/junction_track.json \
-  --goal "Station B" \
-  --config configs/junction_track.json
+  --goal "Station B"
 ```
 
-`--start "Station A"` overrides the map’s `navigation.default_start`. The QR reader reports confirmed checkpoint IDs to A*; it does not estimate pose. At an approach checkpoint, the route manager arms the one required junction maneuver. The next QR event replans the remaining route.
+`--start "Station A"` overrides `navigation.default_start`. A confirmed QR updates the route current checkpoint; if the next graph edge is a junction turn, the controller arms that maneuver. QR checkpoints are not localization.
 
-`--ui` starts the TrackTag dashboard console. It can be used with `--headless`: Fortress runs server-only with off-screen camera rendering while the dashboard remains a separate desktop window. The dashboard subscribes to camera, telemetry, checkpoint, and mission-status topics; its Mission tab sends validated mission commands, while its top-bar SEND STOP remains a one-shot zero-velocity safety message. The older `--view` and `--front-view` OpenCV windows remain available for compatibility.
+## Dashboard
 
-The UI requires a Dear ImGui source checkout. CMake first checks `third_party/imgui`, then `~/Downloads/imgui`; otherwise configure explicitly:
+Add `--ui` to open the TrackTag console. It has four pages: **Mission**, **Cameras**, **Diagnostics**, and **Settings**. It subscribes to native transport data and only publishes an explicit mission command or the one-shot top-bar **Send stop** command.
+
+The Mission page is a live workspace: drag the centre divider to resize mission control versus cameras, drag the camera divider to resize the front and QR views, and use either fullscreen button for a focused camera view.
+
+Create a session-only mission by starting with `--map` and omitting both `--goal` and `--mission`. Add graph checkpoint IDs in the Mission page and choose **Create mission**. The primary button changes with controller state: **Start mission**, **Pause mission**, **Resume mission**, **Next task**, or **Retry task**. **Cancel mission** appears only while relevant.
+
+The dashboard requires Dear ImGui. CMake checks `third_party/imgui`, then `~/Downloads/imgui`; otherwise configure explicitly:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DIMGUI_DIR=/path/to/imgui
 cmake --build build -j2
 ```
 
-### Dashboard console
+## Reusable missions
 
-Use `--ui` with the single launcher to open the TrackTag dashboard alongside Fortress and the controller:
-
-```bash
-./build/track-tag-navigation --run --ui --map maps/junction_track.json --goal "Station B"
-```
-
-The dashboard is a native Ignition Transport client with four user-facing pages: Mission, Cameras, Diagnostics, and Settings. The Mission page builds a validated in-memory checkpoint queue, sends Start/Pause/Resume/Next/Retry/Stop/Cancel to the controller, and can show either camera or both in a resizable workspace. Its **SEND STOP** button publishes one zero-velocity message; the line controller can publish another command on its next loop, so end the controller with `Ctrl+C` for a persistent manual stop.
-
-### UI-controlled missions
-
-A mission is an ordered queue of `navigate` tasks. The controller owns the state machine and validates every UI command; the UI does not directly control route state or continuously publish motion commands.
+A mission JSON is an ordered queue of `navigate` tasks owned and validated by the controller:
 
 ```json
 {
@@ -292,21 +296,19 @@ A mission is an ordered queue of `navigate` tasks. The controller owns the state
 }
 ```
 
-Use the included example with the junction map:
+Run the supplied example:
 
 ```bash
 __NV_PRIME_RENDER_OFFLOAD=1 \
 __GLX_VENDOR_LIBRARY_NAME=nvidia \
 ./build/track-tag-navigation --headless --ui \
+  --world sdf/junction_track.sdf \
   --map maps/junction_track.json \
   --config configs/junction_track.json \
-  --world sdf/junction_track.sdf \
   --mission missions/junction_demo.json \
   --robot amr_1
-
 ```
-Do not add `--goal` to a mission launch: the active mission task owns the route goal.
 
-To build a session-only mission from scratch, omit both `--goal` and `--mission`, keep `--map`, then add checkpoint IDs and choose **Create mission** on the Mission page. Use a JSON mission file when the queue should be reusable.
+Do not pass `--goal` with `--mission`; the active mission task supplies the goal. With `auto_advance: false`, reaching a requested checkpoint stops the robot. Select **Next task** in the Mission page to dispatch the next task.
 
-Open the **Mission** tab and press **Start**. At each requested checkpoint the controller stops. With `auto_advance: false`, press **Next task** to dispatch the next queued task. **Pause** and **Stop** latch a controller-side zero-motion state; **Resume**, **Retry**, and **Cancel** are validated by the mission executor. The native transport contract is `/mission/command` and `/mission/status` using `ignition.msgs.StringMsg`.
+The mission transport contract is `/mission/command` and `/mission/status`, both using `ignition.msgs.StringMsg`.
