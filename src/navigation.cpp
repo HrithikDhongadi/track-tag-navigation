@@ -38,6 +38,17 @@ const char *routeManeuverName(RouteManeuver maneuver) noexcept {
   return "unknown";
 }
 
+const char *travelHeadingName(TravelHeading heading) noexcept {
+  switch (heading) {
+    case TravelHeading::North: return "north";
+    case TravelHeading::East: return "east";
+    case TravelHeading::South: return "south";
+    case TravelHeading::West: return "west";
+    case TravelHeading::Unknown: return "unknown";
+  }
+  return "unknown";
+}
+
 bool NavigationGraph::load(const std::string &path, std::string &error) {
   try {
     cv::FileStorage input(path, cv::FileStorage::READ | cv::FileStorage::FORMAT_JSON);
@@ -51,6 +62,17 @@ bool NavigationGraph::load(const std::string &path, std::string &error) {
     if (!edges.isSeq()) { error = "navigation.edges must be an array."; return false; }
     std::unordered_map<std::string, std::vector<NavigationEdge>> outgoing;
     std::unordered_set<std::string> edgeIds, pairs, nodes;
+    std::unordered_map<std::string, std::pair<double, double>> positions;
+    const cv::FileNode checkpoints = input["checkpoints"];
+    if (checkpoints.isSeq()) {
+      for (const auto &checkpoint : checkpoints) {
+        std::string id; double x = 0, y = 0;
+        checkpoint["id"] >> id; checkpoint["x"] >> x; checkpoint["y"] >> y;
+        if (id.empty() || !std::isfinite(x) || !std::isfinite(y) || !positions.emplace(id, std::make_pair(x, y)).second) {
+          error = "Invalid or duplicate checkpoint position: " + id; return false;
+        }
+      }
+    }
     for (const auto &item : edges) {
       NavigationEdge edge; item["id"] >> edge.id; item["from"] >> edge.from; item["to"] >> edge.to; item["cost_m"] >> edge.costM;
       edge.maneuver = parseManeuver(item["maneuver"], error);
@@ -63,7 +85,7 @@ bool NavigationGraph::load(const std::string &path, std::string &error) {
     }
     if (outgoing.empty()) { error = "navigation.edges is empty."; return false; }
     if (!start.empty() && nodes.find(start) == nodes.end()) { error = "navigation.default_start is not a graph node."; return false; }
-    defaultStart_ = std::move(start); outgoing_ = std::move(outgoing); return true;
+    defaultStart_ = std::move(start); outgoing_ = std::move(outgoing); positions_ = std::move(positions); return true;
   } catch (const cv::Exception &exception) { error = std::string("Invalid navigation map: ") + exception.what(); return false; }
 }
 
@@ -73,28 +95,63 @@ bool NavigationGraph::hasNode(const std::string &id) const {
   return false;
 }
 
+TravelHeading NavigationGraph::headingBetween(const std::string &from, const std::string &to) const {
+  const auto source = positions_.find(from), destination = positions_.find(to);
+  if (source == positions_.end() || destination == positions_.end()) return TravelHeading::Unknown;
+  const double dx = destination->second.first - source->second.first;
+  const double dy = destination->second.second - source->second.second;
+  if (dx == 0.0 && dy == 0.0) return TravelHeading::Unknown;
+  if (std::abs(dx) >= std::abs(dy)) return dx >= 0.0 ? TravelHeading::East : TravelHeading::West;
+  return dy >= 0.0 ? TravelHeading::North : TravelHeading::South;
+}
+
 std::vector<NavigationEdge> NavigationGraph::aStar(const std::string &start,
-                                                    const std::string &goal) const {
-  struct QueueItem { double cost; std::string node; bool operator>(const QueueItem &other) const { return cost > other.cost; } };
+                                                    const std::string &goal,
+                                                    TravelHeading arrivalHeading) const {
+  struct QueueItem { double cost; std::string state; bool operator>(const QueueItem &other) const { return cost > other.cost; } };
   if (!hasNode(start) || !hasNode(goal)) return {};
+  const auto stateKey = [](const std::string &node, TravelHeading heading) {
+    return node + '\n' + std::to_string(static_cast<int>(heading));
+  };
+  const auto opposite = [](TravelHeading first, TravelHeading second) {
+    return (first == TravelHeading::North && second == TravelHeading::South) ||
+           (first == TravelHeading::South && second == TravelHeading::North) ||
+           (first == TravelHeading::East && second == TravelHeading::West) ||
+           (first == TravelHeading::West && second == TravelHeading::East);
+  };
   std::priority_queue<QueueItem, std::vector<QueueItem>, std::greater<QueueItem>> open;
   std::unordered_map<std::string, double> distance;
-  std::unordered_map<std::string, NavigationEdge> previous;
-  distance[start] = 0.0; open.push({0.0, start});
+  struct Previous { NavigationEdge edge; std::string state; };
+  std::unordered_map<std::string, Previous> previous;
+  const std::string initial = stateKey(start, arrivalHeading);
+  distance[initial] = 0.0; open.push({0.0, initial});
+  std::string goalState;
   while (!open.empty()) {
     const auto current = open.top(); open.pop();
-    if (current.cost != distance[current.node]) continue;
-    if (current.node == goal) break;
-    const auto found = outgoing_.find(current.node); if (found == outgoing_.end()) continue;
+    if (current.cost != distance[current.state]) continue;
+    const auto split = current.state.rfind('\n');
+    const std::string node = current.state.substr(0, split);
+    const auto heading = static_cast<TravelHeading>(std::stoi(current.state.substr(split + 1)));
+    if (node == goal) { goalState = current.state; break; }
+    const auto found = outgoing_.find(node); if (found == outgoing_.end()) continue;
     for (const auto &edge : found->second) {
+      const TravelHeading nextHeading = headingBetween(node, edge.to);
+      if (heading != TravelHeading::Unknown && nextHeading != TravelHeading::Unknown && opposite(heading, nextHeading)) continue;
       const double candidate = current.cost + edge.costM;
-      const auto old = distance.find(edge.to);
-      if (old == distance.end() || candidate < old->second) { distance[edge.to] = candidate; previous[edge.to] = edge; open.push({candidate, edge.to}); }
+      const std::string nextState = stateKey(edge.to, nextHeading);
+      const auto old = distance.find(nextState);
+      if (old == distance.end() || candidate < old->second) {
+        distance[nextState] = candidate; previous[nextState] = {edge, current.state}; open.push({candidate, nextState});
+      }
     }
   }
-  if (distance.find(goal) == distance.end()) return {};
+  if (goalState.empty()) return {};
   std::vector<NavigationEdge> route;
-  for (std::string node = goal; node != start;) { const auto found = previous.find(node); if (found == previous.end()) return {}; route.push_back(found->second); node = found->second.from; }
+  for (std::string state = goalState; state != initial;) {
+    const auto found = previous.find(state); if (found == previous.end()) return {};
+    route.push_back(found->second.edge);
+    state = found->second.state;
+  }
   std::reverse(route.begin(), route.end()); return route;
 }
 

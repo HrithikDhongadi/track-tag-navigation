@@ -1,6 +1,7 @@
 #include "amr/qr_reader.hpp"
 #include "amr/runtime.hpp"
 #include "amr/mission_executor.hpp"
+#include "amr/logger.hpp"
 #include "amr/route_manager.hpp"
 
 #include <ignition/msgs/image.pb.h>
@@ -24,7 +25,7 @@ namespace {
 using Clock = std::chrono::steady_clock;
 }  // namespace
 
-int runQrReader(bool view, bool frontView, std::atomic_bool &running,
+int runQrReader(bool view, bool frontView, double cameraTimeoutS, std::atomic_bool &running,
                 std::shared_ptr<RouteManager> routes, std::shared_ptr<MissionExecutor> mission) {
   cv::setNumThreads(1);
   std::mutex mutex;
@@ -63,11 +64,11 @@ int runQrReader(bool view, bool frontView, std::atomic_bool &running,
         ++frontSequence;
       };
     if (!node.Subscribe<ignition::msgs::Image>("/amr/qr/image", callback)) {
-    std::cerr << "Cannot subscribe to QR camera\n";
+    Logger::instance().error("Cannot subscribe to QR camera");
     return 1;
   }
   if (frontView && !node.Subscribe<ignition::msgs::Image>("/amr/front/image", frontCallback)) {
-    std::cerr << "Cannot subscribe to front camera\n";
+    Logger::instance().error("Cannot subscribe to front camera");
     return 1;
   }
     zbar::ImageScanner scanner;
@@ -75,8 +76,9 @@ int runQrReader(bool view, bool frontView, std::atomic_bool &running,
   scanner.set_config(zbar::ZBAR_QRCODE, zbar::ZBAR_CFG_ENABLE, 1);
   std::map<std::string, double> lastSeen;
   std::string lastLocation = "unknown";
+  bool timeoutReported = false;
   auto status = Clock::now();
-  std::cout << "Listening to /amr/qr/image. No motion commands are sent.\n";
+  Logger::instance().info("Listening to /amr/qr/image. No motion commands are sent.");
   if (view) {
     cv::namedWindow("QR camera", cv::WINDOW_NORMAL | cv::WINDOW_KEEPRATIO);
     cv::resizeWindow("QR camera", 640, 480);
@@ -99,6 +101,7 @@ int runQrReader(bool view, bool frontView, std::atomic_bool &running,
       }
     }
     if (!frame.empty()) {
+      timeoutReported = false;
       const double now = std::chrono::duration<double>(Clock::now().time_since_epoch()).count();
       zbar::Image image(frame.cols, frame.rows, "Y800", frame.data, frame.total());
       scanner.scan(image);
@@ -107,11 +110,12 @@ int runQrReader(bool view, bool frontView, std::atomic_bool &running,
         if (id.empty()) continue;
         const auto previous = lastSeen.find(id);
         if (previous == lastSeen.end() || now - previous->second > 3.0)
-          std::cout << "Location: " << id << std::endl;
+          Logger::instance().info("Location: ", id);
         lastSeen[id] = now;
         lastLocation = id;
-        if (routes) routes->onCheckpoint(id);
-        if (mission) mission->onCheckpoint(id);
+        const bool accepted = !routes || routes->onCheckpoint(id);
+        if (accepted && mission) mission->onCheckpoint(id);
+        else if (!accepted && mission && routes) mission->onRouteDeviation(routes->snapshot().event);
         if (checkpointPublisher) { ignition::msgs::StringMsg event; event.set_data(id); checkpointPublisher.Publish(event); }
       }
       image.set_data(nullptr, 0);
@@ -123,12 +127,16 @@ int runQrReader(bool view, bool frontView, std::atomic_bool &running,
         cv::imshow("QR camera", display);
       }
     }
+    if (!timeoutReported && Clock::now() - frameReceived > std::chrono::duration<double>(cameraTimeoutS)) {
+      if (mission) mission->onQrCameraTimeout();
+      timeoutReported = true;
+    }
     if (frontView && !frontFrame.empty()) cv::imshow("Front camera", frontFrame);
     if (Clock::now() - status > std::chrono::seconds(5)) {
-      if (!consumed || Clock::now() - frameReceived > std::chrono::seconds(3))
-        std::cout << "Waiting for camera frames: is simulation playing?\n";
+      if (!consumed || Clock::now() - frameReceived > std::chrono::duration<double>(cameraTimeoutS))
+        Logger::instance().warning("Waiting for QR camera frames: is simulation playing?");
       else
-        std::cout << "Camera active; last checkpoint: " << lastLocation << std::endl;
+        Logger::instance().info("QR camera active; last checkpoint: ", lastLocation);
       status = Clock::now();
     }
     if (view || frontView) {

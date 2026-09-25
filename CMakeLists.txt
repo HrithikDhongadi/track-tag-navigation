@@ -21,6 +21,7 @@ pkg_check_modules(ZBAR REQUIRED IMPORTED_TARGET zbar)
 add_executable(track_tag_navigation_controller
   src/main.cpp
   src/options.cpp
+  src/logger.cpp
   src/control_config.cpp
   src/navigation.cpp
   src/route_manager.cpp
@@ -37,6 +38,37 @@ target_link_libraries(track_tag_navigation_controller PRIVATE
   Threads::Threads)
 target_compile_options(track_tag_navigation_controller PRIVATE -Wall -Wextra -Wpedantic)
 
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(track_tag_navigation_core_tests
+    tests/core_tests.cpp
+    src/logger.cpp
+    src/control_config.cpp
+    src/navigation.cpp
+    src/route_manager.cpp
+    src/mission_executor.cpp)
+  target_include_directories(track_tag_navigation_core_tests PRIVATE include ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(track_tag_navigation_core_tests PRIVATE
+    ignition-transport11::core
+    ignition-msgs8::ignition-msgs8
+    ${OpenCV_LIBS}
+    Threads::Threads)
+  target_compile_definitions(track_tag_navigation_core_tests PRIVATE
+    TRACK_TAG_NAVIGATION_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+  target_compile_options(track_tag_navigation_core_tests PRIVATE -Wall -Wextra -Wpedantic)
+  add_test(NAME track_tag_navigation_core COMMAND track_tag_navigation_core_tests)
+
+  option(TRACK_TAG_NAVIGATION_ENABLE_GAZEBO_SMOKE_TEST
+    "Run the Fortress headless transport smoke test (requires a working Ogre runtime)" OFF)
+  find_program(IGN_EXECUTABLE ign)
+  if(TRACK_TAG_NAVIGATION_ENABLE_GAZEBO_SMOKE_TEST AND IGN_EXECUTABLE)
+    add_test(NAME track_tag_navigation_headless_smoke
+      COMMAND bash ${CMAKE_SOURCE_DIR}/tests/headless_smoke.sh
+        ${CMAKE_BINARY_DIR}/track-tag-navigation ${CMAKE_SOURCE_DIR})
+    set_tests_properties(track_tag_navigation_headless_smoke PROPERTIES TIMEOUT 40)
+  endif()
+endif()
+
 set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/third_party/imgui" CACHE PATH
     "Path to a Dear ImGui source checkout")
 if(NOT EXISTS "${IMGUI_DIR}/imgui.cpp" AND EXISTS "$ENV{HOME}/Downloads/imgui/imgui.cpp")
@@ -49,6 +81,7 @@ if(EXISTS "${IMGUI_DIR}/imgui.cpp")
     src/ui/telemetry_viewer.cpp
     src/ui/dashboard.cpp
     src/ui/telemetry_store.cpp
+    src/logger.cpp
     src/ui/theme.cpp
     src/ui/widgets.cpp
     ${IMGUI_DIR}/imgui.cpp

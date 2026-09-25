@@ -16,9 +16,11 @@ struct RouteSnapshot {
   std::string current;
   std::string next;
   std::string armed;
+  std::string heading;
   std::string event;
   bool active = false;
   bool goalReached = false;
+  bool recoveryRequired = false;
 };
 
 class RouteManager {
@@ -26,7 +28,8 @@ class RouteManager {
   RouteManager(std::shared_ptr<NavigationGraph> graph, std::string start,
                std::string goal);
 
-  void onCheckpoint(const std::string &id);
+  // Returns false when an active route cannot legitimately reach this QR next.
+  bool onCheckpoint(const std::string &id);
   void setRoute(std::string start, std::string goal);
   std::optional<TurnRequest> takeArmedTurn();
   void onTurnCompleted();
@@ -40,9 +43,11 @@ class RouteManager {
   mutable std::mutex mutex_;
   std::string goal_;
   std::string current_;
+  TravelHeading heading_ = TravelHeading::Unknown;
   std::vector<NavigationEdge> route_;
   std::optional<TurnRequest> armedTurn_;
   bool turnDelivered_ = false;
+  bool recoveryRequired_ = false;
   std::string event_;
 };
 

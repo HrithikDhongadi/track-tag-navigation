@@ -26,10 +26,20 @@ struct JunctionConfig {
   double cooldownS = .80;
 };
 
+struct MissionConfig {
+  // A dispatched task must finish within this time.
+  double routeTimeoutS = 120.0;
+  // A navigating task must keep receiving accepted checkpoint progress.
+  double checkpointTimeoutS = 30.0;
+  // Loss of QR camera frames requires an operator-directed recovery.
+  double qrCameraTimeoutS = 5.0;
+};
+
 struct ControlConfig {
   int version = 1;
   LineFollowerConfig lineFollower;
   JunctionConfig junction;
+  MissionConfig mission;
 };
 
 // Loads only fields present in a version-1 JSON profile. Missing fields retain

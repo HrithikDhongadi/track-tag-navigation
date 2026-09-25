@@ -1,6 +1,8 @@
 #include "amr/line_follower.hpp"
 #include "amr/mission_executor.hpp"
 #include "amr/junction_controller.hpp"
+#include "amr/json_message.hpp"
+#include "amr/logger.hpp"
 #include "amr/runtime.hpp"
 #include "amr/route_manager.hpp"
 #include "amr_line_follower/control.hpp"
@@ -16,6 +18,7 @@
 #include <iomanip>
 #include <iostream>
 #include <mutex>
+#include <sstream>
 #include <thread>
 
 namespace amr {
@@ -37,7 +40,7 @@ int runLineFollower(const Options &options, std::atomic_bool &running,
   auto telemetryPublisher = node.Advertise<ignition::msgs::StringMsg>("/amr/telemetry");
   if (!options.monitor) {
     publisher = node.Advertise<ignition::msgs::Twist>("/amr/cmd_vel");
-    if (!publisher) { std::cerr << "Cannot advertise velocity topic\n"; return 1; }
+    if (!publisher) { Logger::instance().error("Cannot advertise velocity topic"); return 1; }
   }
   for (int i = 0; i < 5; ++i) {
     std::function<void(const ignition::msgs::Image &)> callback =
@@ -65,29 +68,28 @@ int runLineFollower(const Options &options, std::atomic_bool &running,
         };
     if (!node.Subscribe<ignition::msgs::Image>("/amr/line_" + std::to_string(i) +
                                                 "/image", callback)) {
-      std::cerr << "Cannot subscribe to camera " << i << '\n';
+      Logger::instance().error("Cannot subscribe to camera ", i);
       return 1;
     }
   }
-  std::cout << (options.monitor ? "MONITOR: does not send movement commands.\n"
-                                : "DRIVE: stop on lost line/stale data; Ctrl+C sends stop.\n")
-            << "Sensors L -> R: 0 1 2 3 4. Mean: 0=black, 255=white.\n";
+  Logger::instance().info(options.monitor ? "MONITOR: does not send movement commands." :
+                          "DRIVE: stop on lost line/stale data; Ctrl+C sends stop.");
+  Logger::instance().info("Sensors L -> R: 0 1 2 3 4. Mean: 0=black, 255=white.");
   const auto &lineConfig = options.control.lineFollower;
   const auto &junctionConfig = options.control.junction;
-  std::cout << "CONTROL: " << (options.configPath.empty() ? "built-in defaults" : options.configPath)
-            << " line(speed=" << lineConfig.speedMps << ", kp=" << lineConfig.kp
-            << ", threshold=" << lineConfig.darkThreshold << ")"
-            << " junction(active=" << junctionConfig.minimumActiveSensors
-            << ", total_dark=" << junctionConfig.minimumTotalDark
-            << ", bias=L" << junctionConfig.leftBiasRadps
-            << "/R" << junctionConfig.rightBiasRadps
-            << ", commit=" << junctionConfig.commitDurationS << "s)" << std::endl;
+  Logger::instance().info("CONTROL: ", options.configPath.empty() ? "built-in defaults" : options.configPath,
+                          " line(speed=", lineConfig.speedMps, ", kp=", lineConfig.kp,
+                          ", threshold=", lineConfig.darkThreshold, ") junction(active=",
+                          junctionConfig.minimumActiveSensors, ", total_dark=", junctionConfig.minimumTotalDark,
+                          ", bias=L", junctionConfig.leftBiasRadps, "/R", junctionConfig.rightBiasRadps,
+                          ", commit=", junctionConfig.commitDurationS, "s)");
   if (options.junctionTurn != TurnRequest::None || routes)
-    std::cout << "JUNCTION: fixed test turn enabled; it will commit only on a broad line pattern.\n";
+    Logger::instance().info("JUNCTION: fixed test turn enabled; it will commit only on a broad line pattern.");
   auto lastPrint = Clock::now() - std::chrono::seconds(1);
   JunctionController junction(options.junctionTurn, options.control.junction);
   auto previousLoop = Clock::now();
   while (isRunning(running)) {
+    if (mission) mission->checkTimeouts();
     std::array<Reading, 5> snapshot;
     { std::lock_guard<std::mutex> guard(mutex); snapshot = readings; }
     const auto now = Clock::now();
@@ -103,12 +105,14 @@ int runLineFollower(const Options &options, std::atomic_bool &running,
     }
     const RouteSnapshot route = routes ? routes->snapshot() : RouteSnapshot{};
     const bool goalReached = route.goalReached;
+    const MissionSnapshot missionSnapshot = mission ? mission->snapshot() : MissionSnapshot{};
+    const bool routeRecoveryRequired = route.recoveryRequired || missionSnapshot.state == "recovery_required";
     const bool missionStopped = mission && !mission->motionEnabled();
     Command command;
-    if (routes && !goalReached && !missionStopped) {
+    if (routes && !goalReached && !missionStopped && !routeRecoveryRequired) {
       if (const auto turn = routes->takeArmedTurn()) junction.setRequest(*turn);
     }
-    if (goalReached || missionStopped) {
+    if (goalReached || missionStopped || routeRecoveryRequired) {
       junction.reset();
       command = {};
     } else if (fresh)
@@ -125,25 +129,40 @@ int runLineFollower(const Options &options, std::atomic_bool &running,
       publisher.Publish(message);
     }
     if (now - lastPrint >= std::chrono::milliseconds(500)) {
-      std::cout << (missionStopped ? "PAUSED  " : goalReached ? "GOAL    " : fresh ? (command.line ? "TRACKING " : "NO LINE  ") : "WAITING  ")
-                << "bits=";
+      std::ostringstream monitor;
+      monitor << (routeRecoveryRequired ? "RECOVERY " : missionStopped ? "PAUSED  " : goalReached ? "GOAL    " : fresh ? (command.line ? "TRACKING " : "NO LINE  ") : "WAITING  ")
+              << "bits=";
       for (const auto &reading : snapshot)
-        std::cout << (reading.valid ? (reading.dark >= .5 ? '1' : '0') : '?');
-      std::cout << " mean=[";
+        monitor << (reading.valid ? (reading.dark >= .5 ? '1' : '0') : '?');
+      monitor << " mean=[";
       for (const auto &reading : snapshot)
-        std::cout << std::fixed << std::setprecision(0) << reading.mean << ' ';
-      std::cout << "] dark=[";
+        monitor << std::fixed << std::setprecision(0) << reading.mean << ' ';
+      monitor << "] dark=[";
       for (const auto &reading : snapshot)
-        std::cout << std::setprecision(2) << reading.dark << ' ';
-      std::cout << "] v=" << command.speed << " w=" << command.turn;
+        monitor << std::setprecision(2) << reading.dark << ' ';
+      monitor << "] v=" << command.speed << " w=" << command.turn;
       if (options.junctionTurn != TurnRequest::None || routes)
-        std::cout << " junction=" << junction.stateName();
-      std::cout << std::endl;
+        monitor << " junction=" << junction.stateName();
+      Logger::instance().info(monitor.str());
       if (telemetryPublisher) {
         ignition::msgs::StringMsg telemetry;
-        std::string text = missionStopped ? "mission paused; stopped" : goalReached ? "goal reached; stopped" : std::string(fresh ? (command.line ? "tracking" : "no line") : "waiting");
-        if (routes) text += " | route=" + route.current + " -> " + route.next + " goal=" + route.goal + " | " + route.event;
-        telemetry.set_data(text);
+        const std::string state = routeRecoveryRequired ? "recovery_required" : missionStopped ? "mission_paused" : goalReached ? "goal_reached" :
+                                  fresh ? (command.line ? "tracking" : "no_line") : "waiting";
+        const std::string message = routeRecoveryRequired ? "route deviation; stopped" : missionStopped ? "mission paused; stopped" : goalReached ? "goal reached; stopped" :
+                                    fresh ? (command.line ? "tracking" : "no line") : "waiting for camera data";
+        std::ostringstream text;
+        text << "{\"schema_version\":1,\"state\":\"" << state
+             << "\",\"message\":\"" << escapeJson(message) << "\""
+             << ",\"linear_mps\":" << command.speed << ",\"angular_radps\":" << command.turn;
+        if (routes) {
+          text << ",\"route_current\":\"" << escapeJson(route.current)
+               << "\",\"route_next\":\"" << escapeJson(route.next)
+               << "\",\"route_heading\":\"" << escapeJson(route.heading)
+               << "\",\"route_goal\":\"" << escapeJson(route.goal)
+               << "\",\"route_event\":\"" << escapeJson(route.event) << "\"";
+        }
+        text << "}";
+        telemetry.set_data(text.str());
         telemetryPublisher.Publish(telemetry);
         if (mission) mission->publishStatus();
       }

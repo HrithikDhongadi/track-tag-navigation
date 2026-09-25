@@ -19,5 +19,10 @@
     "reacquire_speed_factor": 0.65,
     "reacquire_stable_s": 0.15,
     "cooldown_s": 0.80
+  },
+  "mission": {
+    "route_timeout_s": 120.0,
+    "checkpoint_timeout_s": 30.0,
+    "qr_camera_timeout_s": 5.0
   }
 }

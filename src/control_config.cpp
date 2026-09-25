@@ -44,6 +44,7 @@ bool mapOrEmpty(const cv::FileNode &node, const char *name, std::string &error) 
 bool validateControlConfig(const ControlConfig &config, std::string &error) {
   const auto &line = config.lineFollower;
   const auto &junction = config.junction;
+  const auto &mission = config.mission;
   if (config.version != 1) error = "Unsupported config version (expected 1).";
   else if (!(line.speedMps > 0.0 && line.speedMps <= .3))
     error = "line_follower.speed_mps must be in (0, 0.3].";
@@ -70,6 +71,9 @@ bool validateControlConfig(const ControlConfig &config, std::string &error) {
   else if (junction.commitDurationS <= 0.0 || junction.reacquireStableS < 0.0 ||
            junction.cooldownS < 0.0)
     error = "junction timings must be non-negative; commit_duration_s must be positive.";
+  else if (!(mission.routeTimeoutS > 0.0 && mission.checkpointTimeoutS > 0.0 &&
+             mission.qrCameraTimeoutS > 0.0 && mission.checkpointTimeoutS <= mission.routeTimeoutS))
+    error = "mission timeouts must be positive; checkpoint_timeout_s cannot exceed route_timeout_s.";
   else
     return true;
   return false;
@@ -91,7 +95,9 @@ bool loadControlConfig(const std::string &path, ControlConfig &config, std::stri
 
     const cv::FileNode line = root["line_follower"];
     const cv::FileNode junction = root["junction"];
-    if (!mapOrEmpty(line, "line_follower", error) || !mapOrEmpty(junction, "junction", error))
+    const cv::FileNode mission = root["mission"];
+    if (!mapOrEmpty(line, "line_follower", error) || !mapOrEmpty(junction, "junction", error) ||
+        !mapOrEmpty(mission, "mission", error))
       return false;
     if (!line.empty() &&
         (!readDouble(line, "speed_mps", config.lineFollower.speedMps, error) ||
@@ -112,6 +118,11 @@ bool loadControlConfig(const std::string &path, ControlConfig &config, std::stri
          !readDouble(junction, "reacquire_speed_factor", config.junction.reacquireSpeedFactor, error) ||
          !readDouble(junction, "reacquire_stable_s", config.junction.reacquireStableS, error) ||
          !readDouble(junction, "cooldown_s", config.junction.cooldownS, error)))
+      return false;
+    if (!mission.empty() &&
+        (!readDouble(mission, "route_timeout_s", config.mission.routeTimeoutS, error) ||
+         !readDouble(mission, "checkpoint_timeout_s", config.mission.checkpointTimeoutS, error) ||
+         !readDouble(mission, "qr_camera_timeout_s", config.mission.qrCameraTimeoutS, error)))
       return false;
     return validateControlConfig(config, error);
   } catch (const cv::Exception &exception) {

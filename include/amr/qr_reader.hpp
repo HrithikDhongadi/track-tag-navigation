@@ -7,7 +7,7 @@
 namespace amr {
 
 class RouteManager;
-int runQrReader(bool view, bool frontView, std::atomic_bool &running,
+int runQrReader(bool view, bool frontView, double cameraTimeoutS, std::atomic_bool &running,
                 std::shared_ptr<RouteManager> routes = {},
                 std::shared_ptr<MissionExecutor> mission = {});
 

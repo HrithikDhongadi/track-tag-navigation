@@ -103,6 +103,8 @@ The default world is `sdf/track_with_qr.sdf`.
 - Line-controller loop: approximately 30 Hz; terminal logging: 2 Hz
 
 The controller stops when the line is lost or camera data is stale. It does not search for a line or estimate pose. When a map route or mission is active, confirmed QR checkpoints drive route progress and station arrival behavior.
+An active mission enters `recovery_required` and stops if QR camera frames are stale for its configured timeout;
+use `retry` after restoring camera/simulator operation.
 
 ## Create a custom map
 
@@ -156,6 +158,8 @@ Editor controls:
 ### Navigation graph
 
 QR checkpoints can also be edited as directed A* graph nodes. In the **Navigation graph** panel, choose a default start, then add each **From → To** edge with a cost and maneuver. Use `follow line` for ordinary segments and `turn left`, `turn right`, or `go straight` for an edge leaving a junction.
+
+When checkpoint positions are present in the map, routing also retains the robot's incoming cardinal heading. It will not plan an implicit reverse departure: after reaching a checkpoint southbound, it selects a valid southbound continuation rather than assuming the robot can instantly turn around. U-turns are deliberately not automatic; model them later as explicitly authorised station maneuvers.
 
 The editor draws directional arrows over the map. Select an arrow in the edge list to highlight it; use **Validate navigation graph** before downloading. Renaming or removing a QR updates/removes its connected graph edges. The exported schema is `navigation.schema_version = 1`, with modular directed `edges`; it is ignored by SDF rendering but validated by `generate_map.py` for checkpoint references, costs, duplicate edges, and valid maneuvers.
 
@@ -212,10 +216,10 @@ Then set the map JSON or editor robot URI to `model://my_robot`. The supplied mo
 | `/amr/line_0/image` … `/amr/line_4/image` | `ignition.msgs.Image` | Line cameras |
 | `/amr/qr/image` | `ignition.msgs.Image` | QR camera |
 | `/amr/front/image` | `ignition.msgs.Image` | Forward heading camera |
-| `/amr/telemetry` | `ignition.msgs.StringMsg` | Controller and route status |
+| `/amr/telemetry` | `ignition.msgs.StringMsg` (JSON, schema v1) | Controller and route status |
 | `/amr/checkpoint` | `ignition.msgs.StringMsg` | Decoded checkpoint ID |
 | `/mission/command` | `ignition.msgs.StringMsg` | Explicit mission command |
-| `/mission/status` | `ignition.msgs.StringMsg` | Controller-owned mission state |
+| `/mission/status` | `ignition.msgs.StringMsg` (JSON, schema v1) | Controller-owned mission state |
 | `/amr/odometry` | Ignition odometry | Diff-drive odometry (published by the model plugin; not consumed by this controller) |
 
 ## Layout
@@ -234,6 +238,10 @@ tools/     Browser map editor
 ```
 
 ## Troubleshooting
+
+Runtime events are mirrored to the terminal and session-scoped files when using the supported launcher:
+`logs/session_YYYYMMDD_HHMMSS/{core,controller,navigation,ui}.log`. The controller, route/mission
+engine, and optional dashboard write to their corresponding files; a file is created on first event.
 
 - `WAITING`: press Play and ensure simulator and controller share `IGN_PARTITION` if you set one.
 - QR not decoding: use `--view`; confirm the whole QR plus white border is visible.
@@ -256,6 +264,9 @@ The controller has conservative built-in defaults for the supplied baseline. Val
 The profile is loaded first; `--speed`, `--kp`, `--threshold`, and `--timeout` on the command line override it. The process prints the active profile and key settings at startup. `configs/junction_track.json` is an editable starting profile for the smooth-junction map.
 
 The `junction` section controls broad-junction detection, commit speed/bias/duration, and exit reacquisition. Keep a separate profile per map while tuning. Cost-based routing uses these same physical-turn settings when it arms a `junction_turn` edge.
+
+The optional `mission` section sets `route_timeout_s`, `checkpoint_timeout_s`, and `qr_camera_timeout_s`.
+Timeouts stop motion; QR camera loss produces `recovery_required`, while route/progress timeouts produce `failed`.
 
 
 ## Cost-based checkpoint routing
@@ -321,4 +332,6 @@ __GLX_VENDOR_LIBRARY_NAME=nvidia \
 
 Do not pass `--goal` with `--mission`; the active mission task supplies the goal. With `auto_advance: false`, reaching a requested checkpoint stops the robot. Select **Next task** in the Mission page to dispatch the next task.
 
-The mission transport contract is `/mission/command` and `/mission/status`, both using `ignition.msgs.StringMsg`.
+The mission transport contract is `/mission/command` and `/mission/status`. Commands use a plain
+`ignition.msgs.StringMsg`; status is a versioned JSON document inside `StringMsg`, with `state`,
+`mission`, `robot`, `current`, `goal`, `event`, `motion_enabled`, and `tasks` fields.

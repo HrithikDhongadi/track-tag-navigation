@@ -94,6 +94,9 @@ fi
 
 # The project root makes ../assets paths in the SDF available to Fortress.
 export IGN_GAZEBO_RESOURCE_PATH="$project_root/models:$project_root${IGN_GAZEBO_RESOURCE_PATH:+:$IGN_GAZEBO_RESOURCE_PATH}"
+log_session="$project_root/logs/session_$(date +%Y%m%d_%H%M%S)"
+mkdir -p "$log_session"
+export TRACK_TAG_LOG_SESSION="$log_session"
 
 cleanup() {
   ign topic -t /amr/cmd_vel -m ignition.msgs.Twist \

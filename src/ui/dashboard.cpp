@@ -1,5 +1,7 @@
 #include "amr/ui/dashboard.hpp"
 
+#include "amr/json_message.hpp"
+#include "amr/logger.hpp"
 #include "amr/ui/telemetry_store.hpp"
 #include "amr/ui/theme.hpp"
 #include "amr/ui/widgets.hpp"
@@ -77,8 +79,9 @@ StatusTone freshness(Clock::time_point received, double limit = 2.0) {
   return std::chrono::duration<double>(Clock::now()-received).count() < limit ? StatusTone::Ok : StatusTone::Warning;
 }
 StatusTone controllerTone(const StatusSnapshot &s) {
-  if (s.telemetry.find("goal reached") != std::string::npos) return StatusTone::Ok;
-  if (s.telemetry.find("no line") != std::string::npos || s.telemetry.find("waiting") != std::string::npos) return StatusTone::Warning;
+  const std::string state = jsonStringField(s.telemetry, "state").value_or("");
+  if (state == "goal_reached") return StatusTone::Ok;
+  if (state == "no_line" || state == "waiting") return StatusTone::Warning;
   return freshness(s.telemetryReceived);
 }
 const char *tabLabel(Tab tab) {
@@ -91,22 +94,19 @@ const char *tabLabel(Tab tab) {
   return "Mission";
 }
 std::string missionField(const std::string &text, const std::string &key) {
-  const std::string prefix = key + "=";
-  const auto begin = text.find(prefix);
-  if (begin == std::string::npos) return "—";
-  const auto value = begin + prefix.size();
-  const auto end = text.find(" | ", value);
-  return text.substr(value, end == std::string::npos ? std::string::npos : end - value);
+  return jsonStringField(text, key).value_or("—");
 }
 
 
 class DashboardApp {
  public:
   int run() {
-    if (!glfwInit()) { std::fprintf(stderr, "TrackTag UI: GLFW initialization failed\n"); return 1; }
+    Logger::instance().initialize(LogChannel::Ui);
+    Logger::instance().ui("TrackTag dashboard starting");
+    if (!glfwInit()) { Logger::instance().error("TrackTag UI: GLFW initialization failed"); return 1; }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3); glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
     window_ = glfwCreateWindow(1440, 900, "TrackTag Navigation Console", nullptr, nullptr);
-    if (!window_) { glfwTerminate(); return 1; }
+    if (!window_) { Logger::instance().error("TrackTag UI window creation failed"); glfwTerminate(); return 1; }
     glfwMakeContextCurrent(window_); glfwSwapInterval(1);
     IMGUI_CHECKVERSION(); ImGui::CreateContext();
     ImGuiIO &io = ImGui::GetIO(); io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; io.IniFilename = nullptr;
@@ -150,7 +150,8 @@ class DashboardApp {
     ImGui::BeginChild("Status strip", {0, 48}, true, ImGuiWindowFlags_NoScrollbar);
     drawStatusPill(s.telemetry.empty() ? "CONTROLLER WAITING" : "CONTROLLER", controllerTone(s)); ImGui::SameLine();
     drawStatusPill(s.checkpoint.empty() ? "QR WAITING" : "QR ACTIVE", freshness(s.checkpointReceived, 4.0)); ImGui::SameLine();
-    ImGui::TextDisabled("%s", s.telemetry.empty() ? "Waiting for native Ignition telemetry on /amr/telemetry" : s.telemetry.c_str());
+    const std::string message = jsonStringField(s.telemetry, "message").value_or(s.telemetry);
+    ImGui::TextDisabled("%s", s.telemetry.empty() ? "Waiting for native Ignition telemetry on /amr/telemetry" : message.c_str());
     ImGui::EndChild();
     ImGui::PopStyleVar();
   }
@@ -201,7 +202,7 @@ class DashboardApp {
     if (state == "navigating") { command = "pause"; return "Pause mission"; }
     if (state == "paused") { command = "resume"; return "Resume mission"; }
     if (state == "arrived") { command = "next"; return "Next task"; }
-    if (state == "cancelled" || state == "failed") { command = "retry"; return "Retry task"; }
+    if (state == "cancelled" || state == "failed" || state == "recovery_required") { command = "retry"; return "Retry task"; }
     command = "start";
     return "Start mission";
   }

@@ -1,4 +1,6 @@
 #include "amr/mission_executor.hpp"
+#include "amr/json_message.hpp"
+#include "amr/logger.hpp"
 
 #include <ignition/msgs/stringmsg.pb.h>
 #include <opencv2/core.hpp>
@@ -17,10 +19,11 @@ std::string fileName(const std::string &path) {
 
 MissionExecutor::MissionExecutor(std::shared_ptr<NavigationGraph> graph,
                                  std::shared_ptr<RouteManager> routes,
-                                 std::string robotId)
-    : graph_(std::move(graph)), routes_(std::move(routes)), robotId_(std::move(robotId)) {
+                                 std::string robotId, MissionConfig config)
+    : graph_(std::move(graph)), routes_(std::move(routes)), robotId_(std::move(robotId)),
+      config_(config) {
   commandNode_.Subscribe<ignition::msgs::StringMsg>("/mission/command", [this](const auto &message) {
-    if (handleCommand(message.data())) publishStatus();
+    if (executeCommand(message.data())) publishStatus();
   });
   statusPublisher_ = statusNode_.Advertise<ignition::msgs::StringMsg>("/mission/status");
   publishStatus();
@@ -35,6 +38,7 @@ const char *MissionExecutor::stateName(MissionState state) noexcept {
     case MissionState::Completed: return "completed";
     case MissionState::Cancelled: return "cancelled";
     case MissionState::Failed: return "failed";
+    case MissionState::RecoveryRequired: return "recovery_required";
   }
   return "unknown";
 }
@@ -43,6 +47,7 @@ void MissionExecutor::setStateLocked(MissionState state, std::string event) {
   state_ = state;
   event_ = std::move(event);
   motionEnabled_ = state == MissionState::Navigating;
+  Logger::instance().navigation("mission state=", stateName(state_), " event=", event_);
 }
 
 bool MissionExecutor::load(const std::string &path, std::string &error) {
@@ -96,11 +101,13 @@ bool MissionExecutor::dispatchLocked() {
   }
   routes_->setRoute(current_, task.destination);
   task.state = "active";
+  taskStartedAt_ = std::chrono::steady_clock::now();
+  lastProgressAt_ = taskStartedAt_;
   setStateLocked(MissionState::Navigating, "navigating to " + task.destination);
   return true;
 }
 
-bool MissionExecutor::handleCommand(const std::string &command) {
+bool MissionExecutor::executeCommand(const std::string &command) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (command.rfind("create:", 0) == 0) {
     std::vector<MissionTask> created;
@@ -138,7 +145,8 @@ bool MissionExecutor::handleCommand(const std::string &command) {
     return true;
   }
   if (command == "retry") {
-    if (activeTask_ < tasks_.size() && (state_ == MissionState::Arrived || state_ == MissionState::Cancelled || state_ == MissionState::Failed)) {
+    if (activeTask_ < tasks_.size() && (state_ == MissionState::Arrived || state_ == MissionState::Cancelled ||
+        state_ == MissionState::Failed || state_ == MissionState::RecoveryRequired)) {
       tasks_[activeTask_].state = "queued"; return dispatchLocked();
     }
     event_ = "retry ignored: no retryable task"; return true;
@@ -155,10 +163,44 @@ void MissionExecutor::onCheckpoint(const std::string &id) {
   std::lock_guard<std::mutex> lock(mutex_);
   if (!graph_->hasNode(id)) return;
   current_ = id;
+  if (state_ == MissionState::Navigating)
+    lastProgressAt_ = std::chrono::steady_clock::now();
   if (state_ != MissionState::Navigating || activeTask_ >= tasks_.size() || id != tasks_[activeTask_].destination) return;
   tasks_[activeTask_].state = "arrived";
   setStateLocked(MissionState::Arrived, "arrived at " + id);
   if (autoAdvance_) { tasks_[activeTask_].state = "completed"; ++activeTask_; dispatchLocked(); }
+}
+
+void MissionExecutor::onQrCameraTimeout() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (state_ != MissionState::Navigating) return;
+  if (activeTask_ < tasks_.size()) tasks_[activeTask_].state = "recovery_required";
+  routes_->setRoute(current_, "");
+  setStateLocked(MissionState::RecoveryRequired,
+                 "QR camera frames timed out; operator recovery required");
+}
+
+void MissionExecutor::onRouteDeviation(const std::string &event) {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (state_ != MissionState::Navigating) return;
+  if (activeTask_ < tasks_.size()) tasks_[activeTask_].state = "recovery_required";
+  routes_->setRoute(current_, "");
+  setStateLocked(MissionState::RecoveryRequired, event + "; operator recovery required");
+}
+
+void MissionExecutor::checkTimeouts() {
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (state_ != MissionState::Navigating) return;
+  const auto now = std::chrono::steady_clock::now();
+  const auto elapsed = std::chrono::duration<double>(now - taskStartedAt_).count();
+  const auto stalled = std::chrono::duration<double>(now - lastProgressAt_).count();
+  std::string reason;
+  if (elapsed >= config_.routeTimeoutS) reason = "route timeout";
+  else if (stalled >= config_.checkpointTimeoutS) reason = "checkpoint progress timeout";
+  if (reason.empty()) return;
+  if (activeTask_ < tasks_.size()) tasks_[activeTask_].state = "failed";
+  routes_->setRoute(current_, "");
+  setStateLocked(MissionState::Failed, reason + "; motion stopped");
 }
 
 bool MissionExecutor::motionEnabled() const { std::lock_guard<std::mutex> lock(mutex_); return motionEnabled_; }
@@ -177,12 +219,21 @@ void MissionExecutor::publishStatus() {
   const auto state = snapshot();
   ignition::msgs::StringMsg message;
   std::ostringstream text;
-  text << "state=" << state.state << " | mission=" << state.mission << " | robot=" << state.robotId
-       << " | current=" << state.current << " | goal=" << state.goal << " | event=" << state.event << " | tasks=";
+  text << "{\"schema_version\":1,\"state\":\"" << escapeJson(state.state)
+       << "\",\"mission\":\"" << escapeJson(state.mission)
+       << "\",\"robot\":\"" << escapeJson(state.robotId)
+       << "\",\"current\":\"" << escapeJson(state.current)
+       << "\",\"goal\":\"" << escapeJson(state.goal)
+       << "\",\"event\":\"" << escapeJson(state.event)
+       << "\",\"motion_enabled\":" << (state.motionEnabled ? "true" : "false")
+       << ",\"tasks\":[";
   for (std::size_t i = 0; i < state.tasks.size(); ++i) {
     if (i) text << ",";
-    text << state.tasks[i].id << ":" << state.tasks[i].state << "->" << state.tasks[i].destination;
+    const auto &task = state.tasks[i];
+    text << "{\"id\":\"" << escapeJson(task.id) << "\",\"state\":\""
+         << escapeJson(task.state) << "\",\"to\":\"" << escapeJson(task.destination) << "\"}";
   }
+  text << "]}";
   message.set_data(text.str()); statusPublisher_.Publish(message);
 }
 

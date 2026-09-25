@@ -1,4 +1,5 @@
 #include "amr/ui/telemetry_store.hpp"
+#include "amr/json_message.hpp"
 
 #include <ignition/msgs/image.pb.h>
 #include <ignition/msgs/stringmsg.pb.h>
@@ -48,7 +49,10 @@ TelemetryStore::TelemetryStore() {
   });
   statusNode_.Subscribe<ignition::msgs::StringMsg>("/amr/telemetry", [this](const auto &message) {
     std::lock_guard<std::mutex> lock(mutex_); telemetry_ = message.data(); telemetryReceived_ = Clock::now();
-    if (telemetry_ != lastTelemetryEvent_) { addEvent(events_, telemetry_); lastTelemetryEvent_ = telemetry_; }
+    if (telemetry_ != lastTelemetryEvent_) {
+      addEvent(events_, jsonStringField(telemetry_, "message").value_or(telemetry_));
+      lastTelemetryEvent_ = telemetry_;
+    }
   });
   checkpointNode_.Subscribe<ignition::msgs::StringMsg>("/amr/checkpoint", [this](const auto &message) {
     std::lock_guard<std::mutex> lock(mutex_); checkpoint_ = message.data(); checkpointReceived_ = Clock::now();
@@ -56,7 +60,10 @@ TelemetryStore::TelemetryStore() {
   });
   missionNode_.Subscribe<ignition::msgs::StringMsg>("/mission/status", [this](const auto &message) {
     std::lock_guard<std::mutex> lock(mutex_); mission_ = message.data(); missionReceived_ = Clock::now();
-    if (mission_ != lastMissionEvent_) { addEvent(events_, "Mission: " + mission_); lastMissionEvent_ = mission_; }
+    if (mission_ != lastMissionEvent_) {
+      addEvent(events_, "Mission: " + jsonStringField(mission_, "event").value_or(mission_));
+      lastMissionEvent_ = mission_;
+    }
   });
   stopPublisher_ = controlNode_.Advertise<ignition::msgs::Twist>("/amr/cmd_vel");
   missionPublisher_ = missionNode_.Advertise<ignition::msgs::StringMsg>("/mission/command");
