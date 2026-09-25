@@ -12,6 +12,8 @@ _deps
 CMakeUserPresets.json
 build*
 logs/
+web/node_modules/
+web/dist/
 
 # CLion
 #  JetBrains specific template is maintained in a separate JetBrains.gitignore that can

@@ -13,6 +13,7 @@ file(CHMOD ${CMAKE_BINARY_DIR}/track-tag-navigation
 find_package(ignition-transport11 REQUIRED)
 find_package(ignition-msgs8 REQUIRED)
 find_package(Threads REQUIRED)
+find_package(Boost 1.74 REQUIRED COMPONENTS system)
 
 find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui)
 find_package(PkgConfig REQUIRED)
@@ -37,6 +38,19 @@ target_link_libraries(track_tag_navigation_controller PRIVATE
   PkgConfig::ZBAR
   Threads::Threads)
 target_compile_options(track_tag_navigation_controller PRIVATE -Wall -Wextra -Wpedantic)
+
+# The browser dashboard never talks to Ignition Transport directly.  This local
+# bridge owns the transport boundary and serves the static React build.
+add_executable(track_tag_navigation_web_bridge
+  src/web_bridge.cpp
+  src/logger.cpp)
+target_include_directories(track_tag_navigation_web_bridge PRIVATE include)
+target_link_libraries(track_tag_navigation_web_bridge PRIVATE
+  ignition-transport11::core
+  ignition-msgs8::ignition-msgs8
+  Boost::system
+  Threads::Threads)
+target_compile_options(track_tag_navigation_web_bridge PRIVATE -Wall -Wextra -Wpedantic)
 
 include(CTest)
 if(BUILD_TESTING)

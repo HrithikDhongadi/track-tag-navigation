@@ -16,7 +16,7 @@ This is intentionally a lightweight, track-based navigation system—not a gener
 - **QR checkpoint events:** a dedicated QR camera reads station and track IDs without putting markers over the line. Checkpoints update the active route; they are not used for localization.
 - **Directed track routing:** choose a named goal or run an ordered mission. The controller finds the lowest-cost route through the map graph and uses configured left, right, or straight junction maneuvers.
 - **Map-to-world workflow:** use the local browser editor to place QR markers, set the robot start pose, and edit graph edges; generate QR textures and a new SDF world from the exported JSON.
-- **Native dashboard:** optionally view front and QR cameras, mission state, controller/transport diagnostics, and send explicit mission commands from a GLFW/Dear ImGui console.
+- **Operations dashboard:** a local React browser console provides Fleet Overview, Live Warehouse, and Tasks through a controller-owned localhost bridge. The original GLFW/Dear ImGui console remains available for developer diagnostics.
 - **Modular and performant simulation:** 50 Hz Fortress physics, Ogre2 with shadows disabled, reusable robot models, and headless operation for real-time-factor testing.
 
 The default world uses five 16×16 line cameras at 15 Hz, a 640×480 QR camera at 5 Hz, and a 320×240 forward camera at 5 Hz. The modular robot used by generated worlds raises the forward camera to 1920×1080.
@@ -50,6 +50,14 @@ cmake --build build -j2
 
 `build/track-tag-navigation` is the supported launcher. It starts Fortress and the native controller; with `--ui`, it also starts the optional dashboard executable.
 
+The browser dashboard additionally requires Node.js 20+ to build its static files once:
+
+```bash
+cd web
+npm ci
+npm run build
+```
+
 ## Run the included world
 
 ```bash
@@ -79,10 +87,27 @@ For a junction-control test, use `--turn left`, `--turn right`, or `--turn strai
 ./build/track-tag-navigation --headless
 ./build/track-tag-navigation --run --world sdf/my_map.sdf
 ./build/track-tag-navigation --run --ui --world sdf/junction_track.sdf --map maps/junction_track.json --goal "Station B"
+./build/track-tag-navigation --run --web --world sdf/junction_track.sdf --map maps/junction_track.json
 ./build/track-tag-navigation --run --ui   --world sdf/junction_track.sdf   --map maps/junction_track.json   --config configs/junction_track.json   --robot amr_1
 ```
 
 `--headless` implies `--run`, retains off-screen camera sensors, and removes the Fortress GUI. It is useful for real-time-factor tests and the desktop dashboard can still run with `--ui`.
+
+### Browser operations dashboard
+
+Build the dashboard as above, then launch with `--web` and the same navigation map used by the controller:
+
+```bash
+./build/track-tag-navigation --run --web \
+  --world sdf/junction_track.sdf --map maps/junction_track.json
+```
+
+Open `http://127.0.0.1:8080`. The bridge binds only to localhost and is the sole
+browser-to-Ignition boundary. It serves a WebSocket status stream, map data, and a
+small validated mission-command API; the controller remains responsible for all
+motion safety and recovery decisions. Fleet Overview, Live Warehouse, and Tasks
+are the initial supported pages. The warehouse marker represents the last QR-confirmed
+checkpoint, not continuous localization.
 
 On hybrid NVIDIA systems, force the discrete GPU if needed:
 

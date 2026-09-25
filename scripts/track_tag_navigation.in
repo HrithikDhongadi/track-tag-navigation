@@ -10,16 +10,19 @@ gazebo_args=(--render-engine ogre2)
 auto_run=false
 headless=false
 ui=false
+web=false
 config_path=""
+map_path=""
 
 usage() {
   cat <<EOF
-Usage: $0 [--run] [--view] [--front-view] [--ui] [--map maps/my_map.json [--goal checkpoint]] [--mission missions/my_mission.json] [--robot amr_1] [--start checkpoint] [--turn left|right|straight] [--config configs/my_profile.json] [--headless] [--world sdf/my_map.sdf]
+Usage: $0 [--run] [--view] [--front-view] [--ui] [--web] [--map maps/my_map.json [--goal checkpoint]] [--mission missions/my_mission.json] [--robot amr_1] [--start checkpoint] [--turn left|right|straight] [--config configs/my_profile.json] [--headless] [--world sdf/my_map.sdf]
 
   --run       start physics immediately (otherwise press Play in Fortress)
   --view      show the QR camera window (adds display overhead)
   --front-view show the forward heading camera window (adds display overhead)
   --ui        open the TrackTag dashboard console (mission, cameras, diagnostics)
+  --web       serve the browser operations dashboard at http://127.0.0.1:8080
   --map       navigation graph map JSON; use alone to create a mission in the UI
   --goal      checkpoint ID to reach using cost-based graph routing
   --mission   ordered navigate-task JSON; starts only from the Mission UI
@@ -39,11 +42,13 @@ while [[ $# -gt 0 ]]; do
     --view) controller_args+=(--view) ;;
     --front-view) controller_args+=(--front-view) ;;
     --ui) ui=true ;;
+    --web) web=true ;;
     --map|--goal|--start|--mission|--robot)
       flag="$1"; shift
       [[ $# -gt 0 ]] || { echo "$flag requires a value" >&2; exit 2; }
       value="$1"
       if [[ ( "$flag" == "--map" || "$flag" == "--mission" ) && "$value" != /* ]]; then value="$project_root/$value"; fi
+      if [[ "$flag" == "--map" ]]; then map_path="$value"; fi
       controller_args+=("$flag" "$value")
       ;;
     --config)
@@ -87,6 +92,19 @@ if [[ "$ui" == true && ! -x "$build_dir/track_tag_navigation_ui" ]]; then
   exit 1
 fi
 
+if [[ "$web" == true && ! -x "$build_dir/track_tag_navigation_web_bridge" ]]; then
+  echo "Missing web bridge. Rebuild with: cmake --build $build_dir -j2" >&2
+  exit 1
+fi
+if [[ "$web" == true && -z "$map_path" ]]; then
+  echo "--web requires --map so the dashboard and controller share one navigation graph" >&2
+  exit 2
+fi
+if [[ "$web" == true && ! -f "$project_root/web/dist/index.html" ]]; then
+  echo "Missing web dashboard build. Run: (cd $project_root/web && npm ci && npm run build)" >&2
+  exit 1
+fi
+
 if [[ ! -x "$build_dir/track_tag_navigation_controller" ]]; then
   echo "Missing controller. Build with: cmake --build $build_dir -j2" >&2
   exit 1
@@ -103,6 +121,7 @@ cleanup() {
     -p 'linear: {x: 0.0}, angular: {z: 0.0}' >/dev/null 2>&1 || true
   kill "${controller_pid:-}" 2>/dev/null || true
   kill "${ui_pid:-}" 2>/dev/null || true
+  kill "${web_pid:-}" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -113,6 +132,9 @@ fi
 
 "$build_dir/track_tag_navigation_controller" "${controller_args[@]}" & controller_pid=$!
 if [[ "$ui" == true ]]; then "$build_dir/track_tag_navigation_ui" & ui_pid=$!; fi
+if [[ "$web" == true ]]; then
+  "$build_dir/track_tag_navigation_web_bridge" --map "$map_path" --web-root "$project_root/web/dist" & web_pid=$!
+fi
 
 if [[ "$auto_run" == true ]]; then gazebo_args+=(-r); fi
 if [[ "$headless" == true ]]; then gazebo_args+=(-s --headless-rendering); fi
